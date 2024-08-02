@@ -8,9 +8,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   CheckClientContract,
   CreateClientContract,
+  GetClientByUserIdContract,
 } from '@taskfusion-microservices/contracts';
 import { ClientEntity, UserType } from '@taskfusion-microservices/entities';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 
 @Injectable()
@@ -33,28 +34,34 @@ export class ClientsService {
   async createClient(
     dto: CreateClientContract.Request
   ): Promise<CreateClientContract.Response> {
+    const client = this.clientRepository.create();
+
+    await this.clientRepository.save(client);
+
     const user = await this.usersService.createUser({
       email: dto.email,
       password: dto.password,
-      user_type: UserType.CLIENT,
-      telegram_id: dto.telegramId,
+      userType: UserType.CLIENT,
+      telegramId: dto.telegramId,
       description: dto.description,
+      name: dto.name,
+      client,
     });
 
-    const client = this.clientRepository.create({
+    await this.updateClients(client.id, {
       user,
     });
-
-    await this.clientRepository.save(client);
 
     const { accessToken, refreshToken } =
       await this.usersService.generateTokens({
         id: user.id,
         email: user.email,
-        user_type: user.user_type,
+        userType: user.userType,
       });
 
-    await this.usersService.updateRefreshToken(user.id, refreshToken);
+    await this.usersService.updateUser(user.id, {
+      refreshToken,
+    });
 
     return {
       accessToken,
@@ -76,12 +83,47 @@ export class ClientsService {
   ): Promise<CheckClientContract.Response> {
     const client = await this.clientRepository.findOne({
       where: {
-        id: dto.client_id,
+        id: dto.clientId,
       },
     });
 
     return {
       exists: Boolean(client),
     };
+  }
+
+  @RabbitRPC({
+    exchange: GetClientByUserIdContract.exchange,
+    routingKey: GetClientByUserIdContract.routingKey,
+    queue: GetClientByUserIdContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'get-client-by-user-id',
+  })
+  async getClientByUserId(
+    dto: GetClientByUserIdContract.Dto
+  ): Promise<GetClientByUserIdContract.Response> {
+    const client = await this.clientRepository.findOne({
+      where: {
+        user: {
+          id: dto.userId,
+        }
+      },
+    });
+
+    return client;
+  }
+
+  async updateClients(
+    clientId: number,
+    clientParams: DeepPartial<ClientEntity>
+  ) {
+    const client = await this.clientRepository.update(
+      { id: clientId },
+      clientParams
+    );
+
+    return client;
   }
 }

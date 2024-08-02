@@ -10,7 +10,7 @@ import {
   CreatePmContract,
 } from '@taskfusion-microservices/contracts';
 import { PmEntity, UserType } from '@taskfusion-microservices/entities';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 
 @Injectable()
@@ -33,28 +33,34 @@ export class PmsService {
   async createPm(
     dto: CreatePmContract.Request
   ): Promise<CreatePmContract.Response> {
+    const pm = this.pmRepository.create();
+
+    await this.pmRepository.save(pm);
+
     const user = await this.usersService.createUser({
       email: dto.email,
       password: dto.password,
-      user_type: UserType.PM,
-      telegram_id: dto.telegramId,
+      userType: UserType.PM,
+      telegramId: dto.telegramId,
       description: dto.description,
+      name: dto.name,
+      pm,
     });
 
-    const pm = this.pmRepository.create({
+    await this.updatePm(pm.id, {
       user,
     });
-
-    await this.pmRepository.save(pm);
 
     const { accessToken, refreshToken } =
       await this.usersService.generateTokens({
         id: user.id,
         email: user.email,
-        user_type: user.user_type,
+        userType: user.userType,
       });
 
-    await this.usersService.updateRefreshToken(user.id, refreshToken);
+    await this.usersService.updateUser(user.id, {
+      refreshToken,
+    });
 
     return {
       accessToken,
@@ -76,12 +82,18 @@ export class PmsService {
   ): Promise<CheckPmContract.Response> {
     const pm = await this.pmRepository.findOne({
       where: {
-        id: dto.pm_id,
+        id: dto.pmId,
       },
     });
 
     return {
       exists: Boolean(pm),
     };
+  }
+
+  async updatePm(pmId: number, pmParams: DeepPartial<PmEntity>) {
+    const pm = await this.pmRepository.update({ id: pmId }, pmParams);
+
+    return pm;
   }
 }

@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, JoinColumn, OneToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  OneToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { UserEntity } from './user.entity';
 
 @Entity({
@@ -8,13 +15,17 @@ export class DeveloperEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
-  user_id: number;
-
-  @Column()
-  bio: string;
-
-  @OneToOne(() => UserEntity, user => user.client)
-  @JoinColumn({ name: 'user_id' })
+  @OneToOne(() => UserEntity, (user) => user.developer)
+  @JoinColumn()
   user: UserEntity;
+
+  @CreateDateColumn({
+    name: 'created_at',
+  })
+  public createdAt: Date;
+
+  @UpdateDateColumn({
+    name: 'updated_at',
+  })
+  public updatedAt: Date;
 }
