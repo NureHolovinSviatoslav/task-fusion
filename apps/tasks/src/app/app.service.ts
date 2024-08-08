@@ -7,11 +7,15 @@ import {
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
-  CheckDeveloperContract,
+  ChangeTaskStatusContract,
   CheckProjectContract,
+  CheckTaskContract,
+  CreateActionContract,
   CreateTaskContract,
   GetTaskByIdContract,
+  GetTaskParticipantsContract,
   GetTasksByStatusContract,
+  GetUsersByIdsContract,
 } from '@taskfusion-microservices/contracts';
 import { TaskEntity } from '@taskfusion-microservices/entities';
 import { handleRpcRequest } from '@taskfusion-microservices/helpers';
@@ -24,6 +28,31 @@ export class AppService {
     private readonly taskRepository: Repository<TaskEntity>,
     private readonly amqpConnection: AmqpConnection
   ) {}
+
+  @RabbitRPC({
+    exchange: CheckTaskContract.exchange,
+    routingKey: CheckTaskContract.routingKey,
+    queue: CheckTaskContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'check-task',
+  })
+  async checkTask(
+    dto: CheckTaskContract.Request
+  ): Promise<CheckTaskContract.Response> {
+    const { taskId } = dto;
+
+    const task = await this.taskRepository.find({
+      where: {
+        id: taskId,
+      },
+    });
+
+    return {
+      exists: Boolean(task),
+    };
+  }
 
   @RabbitRPC({
     exchange: GetTasksByStatusContract.exchange,
@@ -46,7 +75,38 @@ export class AppService {
       },
     });
 
-    return result;
+    const tasks = result.map(async (task) => {
+      const usersResult =
+        await this.amqpConnection.request<GetTaskParticipantsContract.Response>(
+          {
+            exchange: GetTaskParticipantsContract.exchange,
+            routingKey: GetTaskParticipantsContract.routingKey,
+            payload: {
+              taskId: task.id,
+            },
+          }
+        );
+
+      const users = await handleRpcRequest(
+        usersResult,
+        async (response) => response
+      );
+
+      return {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        deadline: task.deadline,
+        projectId: task.projectId,
+        taskStatus: task.taskStatus,
+        taskPriority: task.taskPriority,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+        users,
+      };
+    });
+
+    return Promise.all(tasks);
   }
 
   @RabbitRPC({
@@ -63,13 +123,96 @@ export class AppService {
   ): Promise<GetTaskByIdContract.Response> {
     const { taskId } = dto;
 
-    const result = await this.taskRepository.findOne({
+    const task = await this.taskRepository.findOne({
       where: {
         id: taskId,
       },
     });
 
-    return result;
+    const usersResult =
+      await this.amqpConnection.request<GetTaskParticipantsContract.Response>({
+        exchange: GetTaskParticipantsContract.exchange,
+        routingKey: GetTaskParticipantsContract.routingKey,
+        payload: {
+          taskId,
+        },
+      });
+
+    const users = await handleRpcRequest(
+      usersResult,
+      async (response) => response
+    );
+
+    return {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      deadline: task.deadline,
+      projectId: task.projectId,
+      taskStatus: task.taskStatus,
+      taskPriority: task.taskPriority,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      users,
+    };
+  }
+
+  @RabbitRPC({
+    exchange: ChangeTaskStatusContract.exchange,
+    routingKey: ChangeTaskStatusContract.routingKey,
+    queue: ChangeTaskStatusContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'change-task-status',
+  })
+  async changeTaskStatus(
+    dto: ChangeTaskStatusContract.Dto
+  ): Promise<ChangeTaskStatusContract.Response> {
+    const { taskId, taskStatus, userId } = dto;
+
+    const taskBeforeUpdate = await this.taskRepository.findOne({
+      where: {
+        id: taskId,
+      },
+    });
+
+    const result = await this.taskRepository.update(
+      {
+        id: taskId,
+      },
+      {
+        taskStatus,
+      }
+    );
+
+    const usersResult =
+      await this.amqpConnection.request<GetUsersByIdsContract.Response>({
+        exchange: GetUsersByIdsContract.exchange,
+        routingKey: GetUsersByIdsContract.routingKey,
+        payload: {
+          ids: [userId],
+        } as GetUsersByIdsContract.Request,
+      });
+
+    const response = await handleRpcRequest(
+      usersResult,
+      async (response) => response
+    );
+
+    await this.amqpConnection.request({
+      exchange: CreateActionContract.exchange,
+      routingKey: CreateActionContract.routingKey,
+      payload: {
+        title: `Task status changed from "${taskBeforeUpdate.taskStatus}" to "${taskStatus}" by ${response[0].name}`,
+        userId,
+        taskId,
+      } as CreateActionContract.Dto,
+    });
+
+    return {
+      success: Boolean(result.affected && result.affected > 0),
+    };
   }
 
   @RabbitRPC({
@@ -82,42 +225,24 @@ export class AppService {
     name: 'create-task',
   })
   async createTask(
-    dto: CreateTaskContract.Request
+    dto: CreateTaskContract.Dto
   ): Promise<CreateTaskContract.Response> {
     const {
       deadline,
       description,
-      developerId,
       taskPriority,
       projectId,
       taskStatus,
       title,
+      userId,
     } = dto;
-
-    const developerResult =
-      await this.amqpConnection.request<CheckDeveloperContract.Response>({
-        exchange: CheckDeveloperContract.exchange,
-        routingKey: CheckDeveloperContract.routingKey,
-        payload: {
-          developerId: dto.developerId,
-        } as CheckDeveloperContract.Request,
-      });
-
-    await handleRpcRequest<CheckDeveloperContract.Response>(
-      developerResult,
-      async (response) => {
-        if (!response.exists) {
-          throw new NotFoundException('Developer not found!');
-        }
-      }
-    );
 
     const projectResult =
       await this.amqpConnection.request<CheckProjectContract.Response>({
         exchange: CheckProjectContract.exchange,
         routingKey: CheckProjectContract.routingKey,
         payload: {
-          projectId: dto.projectId,
+          projectId,
         } as CheckProjectContract.Request,
       });
 
@@ -137,10 +262,19 @@ export class AppService {
       taskStatus,
       deadline: new Date(deadline),
       projectId,
-      developerId,
     });
 
     await this.taskRepository.save(task);
+
+    await this.amqpConnection.request({
+      exchange: CreateActionContract.exchange,
+      routingKey: CreateActionContract.routingKey,
+      payload: {
+        title: 'Task created',
+        userId,
+        taskId: task.id,
+      } as CreateActionContract.Dto,
+    });
 
     return task;
   }
