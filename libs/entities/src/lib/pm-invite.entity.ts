@@ -15,9 +15,9 @@ export enum InviteStatus {
 }
 
 @Entity({
-  name: 'invites',
+  name: 'pm-invites',
 })
-export class InviteEntity {
+export class PmInviteEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -50,6 +50,6 @@ export class InviteEntity {
   })
   updatedAt: Date;
 
-  @ManyToOne(() => ProjectEntity, (project) => project.invites)
+  @ManyToOne(() => ProjectEntity, (project) => project.pmInvites)
   project: ProjectEntity;
 }
