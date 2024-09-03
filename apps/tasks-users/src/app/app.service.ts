@@ -11,7 +11,8 @@ import {
   CheckTaskContract,
   CheckUserContract,
   CreateActionContract,
-  GetTaskParticipantsContract,
+  GetTaskIdsByUserIdContract,
+  GetUserIdsByTaskIdContract,
   GetUsersByIdsContract,
   UnassignTaskFromUserContract,
 } from '@taskfusion-microservices/contracts';
@@ -37,7 +38,7 @@ export class AppService {
     name: 'assign-task-to-user',
   })
   async assingTaskToUser(
-    dto: AssignTaskToUserContract.Request
+    dto: AssignTaskToUserContract.Dto
   ): Promise<AssignTaskToUserContract.Response> {
     const { userId, taskId } = dto;
 
@@ -47,7 +48,7 @@ export class AppService {
         routingKey: CheckUserContract.routingKey,
         payload: {
           userId: dto.userId,
-        } as CheckUserContract.Request,
+        } as CheckUserContract.Dto,
       });
 
     await handleRpcRequest<CheckUserContract.Response>(
@@ -65,7 +66,7 @@ export class AppService {
         routingKey: CheckTaskContract.routingKey,
         payload: {
           taskId: dto.taskId,
-        } as CheckTaskContract.Request,
+        } as CheckTaskContract.Dto,
       });
 
     await handleRpcRequest<CheckTaskContract.Response>(
@@ -101,7 +102,7 @@ export class AppService {
         routingKey: GetUsersByIdsContract.routingKey,
         payload: {
           ids: [userId],
-        } as GetUsersByIdsContract.Request,
+        } as GetUsersByIdsContract.Dto,
       });
 
     const response = await handleRpcRequest(
@@ -134,7 +135,7 @@ export class AppService {
     name: 'unassign-task-from-user',
   })
   async unassingTaskFromUser(
-    dto: UnassignTaskFromUserContract.Request
+    dto: UnassignTaskFromUserContract.Dto
   ): Promise<UnassignTaskFromUserContract.Response> {
     const { userId, taskId } = dto;
 
@@ -149,7 +150,7 @@ export class AppService {
         routingKey: GetUsersByIdsContract.routingKey,
         payload: {
           ids: [userId],
-        } as GetUsersByIdsContract.Request,
+        } as GetUsersByIdsContract.Dto,
       });
 
     const response = await handleRpcRequest(
@@ -173,15 +174,42 @@ export class AppService {
   }
 
   @RabbitRPC({
-    exchange: GetTaskParticipantsContract.exchange,
-    routingKey: GetTaskParticipantsContract.routingKey,
-    queue: GetTaskParticipantsContract.queue,
+    exchange: GetTaskIdsByUserIdContract.exchange,
+    routingKey: GetTaskIdsByUserIdContract.routingKey,
+    queue: GetTaskIdsByUserIdContract.queue,
     errorBehavior: MessageHandlerErrorBehavior.NACK,
     errorHandler: defaultNackErrorHandler,
     allowNonJsonMessages: true,
-    name: 'get-task-participants',
+    name: 'get-task-ids-by-user-id',
   })
-  async getTaskParticipants(dto: GetTaskParticipantsContract.Dto) {
+  async getTaskIdsByUserId(
+    dto: GetTaskIdsByUserIdContract.Dto
+  ): Promise<GetTaskIdsByUserIdContract.Response> {
+    const { userId } = dto;
+
+    const entries = await this.tasksUsersRepository.find({
+      where: {
+        userId,
+      },
+    });
+
+    return {
+      taskIds: entries.map((entry) => entry.taskId),
+    };
+  }
+
+  @RabbitRPC({
+    exchange: GetUserIdsByTaskIdContract.exchange,
+    routingKey: GetUserIdsByTaskIdContract.routingKey,
+    queue: GetUserIdsByTaskIdContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'get-user-ids-by-task-id',
+  })
+  async getUserIdsByTaskId(
+    dto: GetUserIdsByTaskIdContract.Dto
+  ): Promise<GetUserIdsByTaskIdContract.Response> {
     const { taskId } = dto;
 
     const entries = await this.tasksUsersRepository.find({
@@ -190,26 +218,8 @@ export class AppService {
       },
     });
 
-    const userIds = entries.map((entry) => entry.userId);
-
-    if (userIds.length === 0) {
-      return [];
-    }
-
-    const usersResult =
-      await this.amqpConnection.request<GetUsersByIdsContract.Response>({
-        exchange: GetUsersByIdsContract.exchange,
-        routingKey: GetUsersByIdsContract.routingKey,
-        payload: {
-          ids: userIds,
-        } as GetUsersByIdsContract.Request,
-      });
-
-    const users = await handleRpcRequest(
-      usersResult,
-      async (response) => response
-    );
-
-    return users;
+    return {
+      userIds: entries.map((entry) => entry.userId),
+    };
   }
 }

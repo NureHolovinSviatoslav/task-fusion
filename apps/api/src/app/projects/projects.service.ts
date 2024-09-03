@@ -15,6 +15,7 @@ import {
   RejectDeveloperInviteContract,
   GetDeveloperInviteByIdContract,
   GetProjectDeveloperUsersContract,
+  GetDeveloperProjectsContract,
 } from '@taskfusion-microservices/contracts';
 import { handleRpcRequest } from '@taskfusion-microservices/helpers';
 
@@ -25,7 +26,7 @@ export class ProjectsService {
   async createProject(
     exchange: string,
     routingKey: string,
-    dto: CreateProjectContract.Request
+    dto: CreateProjectContract.Dto
   ): Promise<CreateProjectContract.Response> {
     const result =
       await this.amqpConnection.request<CreateProjectContract.Response>({
@@ -59,6 +60,21 @@ export class ProjectsService {
   ): Promise<GetPmProjectsContract.Response> {
     const result =
       await this.amqpConnection.request<GetPmProjectsContract.Response>({
+        exchange,
+        routingKey,
+        payload: dto,
+      });
+
+    return handleRpcRequest(result, async (response) => response);
+  }
+
+  async getDeveloperProjects(
+    exchange: string,
+    routingKey: string,
+    dto: GetDeveloperProjectsContract.Dto
+  ): Promise<GetDeveloperProjectsContract.Response> {
+    const result =
+      await this.amqpConnection.request<GetDeveloperProjectsContract.Response>({
         exchange,
         routingKey,
         payload: dto,
@@ -131,7 +147,7 @@ export class ProjectsService {
   async getProjectPmUser(
     exchange: string,
     routingKey: string,
-    dto: GetProjectPmUserContract.Request
+    dto: GetProjectPmUserContract.Dto
   ): Promise<GetProjectPmUserContract.Response> {
     const result =
       await this.amqpConnection.request<GetProjectPmUserContract.Response>({
@@ -146,7 +162,7 @@ export class ProjectsService {
   async getProjectDeveloperUsers(
     exchange: string,
     routingKey: string,
-    dto: GetProjectDeveloperUsersContract.Request
+    dto: GetProjectDeveloperUsersContract.Dto
   ): Promise<GetProjectDeveloperUsersContract.Response> {
     const result =
       await this.amqpConnection.request<GetProjectDeveloperUsersContract.Response>(
@@ -163,7 +179,7 @@ export class ProjectsService {
   async getPmInviteById(
     exchange: string,
     routingKey: string,
-    dto: GetPmInviteByIdContract.Request
+    dto: GetPmInviteByIdContract.Dto
   ): Promise<GetPmInviteByIdContract.Response> {
     const result =
       await this.amqpConnection.request<GetPmInviteByIdContract.Response>({
@@ -227,7 +243,7 @@ export class ProjectsService {
   async getDeveloperInviteById(
     exchange: string,
     routingKey: string,
-    dto: GetDeveloperInviteByIdContract.Request
+    dto: GetDeveloperInviteByIdContract.Dto
   ): Promise<GetDeveloperInviteByIdContract.Response> {
     const result =
       await this.amqpConnection.request<GetDeveloperInviteByIdContract.Response>(
