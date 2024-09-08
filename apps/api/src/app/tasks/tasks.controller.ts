@@ -1,18 +1,22 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { TasksService } from './tasks.service';
 import {
   AssignTaskToUserContract,
   ChangeTaskStatusContract,
   CreateTaskContract,
   GetTaskByIdContract,
   GetTasksByStatusContract,
+  GetUserTasksByStatusContract,
   UnassignTaskFromUserContract,
 } from '@taskfusion-microservices/contracts';
-import { AtJwtGuard, UserIdFromJwt } from '@taskfusion-microservices/common';
+import {
+  AtJwtGuard,
+  CustomAmqpConnection,
+  UserIdFromJwt,
+} from '@taskfusion-microservices/common';
 
 @Controller('tasks')
 export class TasksController {
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(private readonly customAmqpConnection: CustomAmqpConnection) {}
 
   @UseGuards(AtJwtGuard)
   @Post('create-task')
@@ -20,25 +24,14 @@ export class TasksController {
     @Body() dto: CreateTaskContract.Request,
     @UserIdFromJwt() userId: number
   ): Promise<CreateTaskContract.Response> {
-    return this.tasksService.createTask(
-      CreateTaskContract.exchange,
-      CreateTaskContract.routingKey,
-      {
-        ...dto,
-        userId,
-      }
-    );
-  }
+    const payload: CreateTaskContract.Dto = {
+      ...dto,
+      userId,
+    };
 
-  @UseGuards(AtJwtGuard)
-  @Post('get-tasks-by-status')
-  async getTasksByStatus(
-    @Body() dto: GetTasksByStatusContract.Request
-  ): Promise<GetTasksByStatusContract.Response> {
-    return this.tasksService.getTasksByStatus(
-      GetTasksByStatusContract.exchange,
-      GetTasksByStatusContract.routingKey,
-      dto
+    return this.customAmqpConnection.requestOrThrow<CreateTaskContract.Response>(
+      CreateTaskContract.routingKey,
+      payload
     );
   }
 
@@ -47,8 +40,7 @@ export class TasksController {
   async assingTaskToUser(
     @Body() dto: AssignTaskToUserContract.Request
   ): Promise<AssignTaskToUserContract.Response> {
-    return this.tasksService.assingTaskToUser(
-      AssignTaskToUserContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<AssignTaskToUserContract.Response>(
       AssignTaskToUserContract.routingKey,
       dto
     );
@@ -59,24 +51,9 @@ export class TasksController {
   async unassignTaskFromUser(
     @Body() dto: UnassignTaskFromUserContract.Request
   ): Promise<UnassignTaskFromUserContract.Response> {
-    return this.tasksService.unassignTaskFromUser(
-      UnassignTaskFromUserContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<UnassignTaskFromUserContract.Response>(
       UnassignTaskFromUserContract.routingKey,
       dto
-    );
-  }
-
-  @UseGuards(AtJwtGuard)
-  @Get(':taskId')
-  async getTaskById(
-    @Param('taskId') taskId: string
-  ): Promise<GetTaskByIdContract.Response> {
-    return this.tasksService.getTaskById(
-      GetTaskByIdContract.exchange,
-      GetTaskByIdContract.routingKey,
-      {
-        taskId: +taskId,
-      }
     );
   }
 
@@ -86,14 +63,63 @@ export class TasksController {
     @Body() dto: ChangeTaskStatusContract.Request,
     @UserIdFromJwt() userId: number
   ): Promise<ChangeTaskStatusContract.Response> {
-    return this.tasksService.changeTaskStatus(
-      ChangeTaskStatusContract.exchange,
+    const payload: ChangeTaskStatusContract.Dto = {
+      taskId: dto.taskId,
+      taskStatus: dto.taskStatus,
+      userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<ChangeTaskStatusContract.Response>(
       ChangeTaskStatusContract.routingKey,
-      {
-        taskId: dto.taskId,
-        taskStatus: dto.taskStatus,
-        userId,
-      }
+      payload
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
+  @Post('get-user-tasks-by-status')
+  async getUserTasksByStatus(
+    @Body() dto: GetUserTasksByStatusContract.Request,
+    @UserIdFromJwt() userId: number
+  ): Promise<GetUserTasksByStatusContract.Response> {
+    const payload: GetUserTasksByStatusContract.Dto = {
+      status: dto.status,
+      userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetUserTasksByStatusContract.Response>(
+      GetUserTasksByStatusContract.routingKey,
+      payload
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
+  @Post('get-tasks-by-status')
+  async getTasksByStatus(
+    @Body() dto: GetTasksByStatusContract.Request
+  ): Promise<GetTasksByStatusContract.Response> {
+    const payload: GetTasksByStatusContract.Dto = {
+      projectId: dto.projectId,
+      taskStatus: dto.taskStatus,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetTasksByStatusContract.Response>(
+      GetTasksByStatusContract.routingKey,
+      payload
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
+  @Get(':taskId')
+  async getTaskById(
+    @Param('taskId') taskId: string
+  ): Promise<GetTaskByIdContract.Response> {
+    const payload: GetTaskByIdContract.Dto = {
+      taskId: +taskId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetTaskByIdContract.Response>(
+      GetTaskByIdContract.routingKey,
+      payload
     );
   }
 }

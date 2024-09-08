@@ -1,5 +1,4 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { AuthService } from './auth.service';
 import {
   CreateClientContract,
   CreateDeveloperContract,
@@ -14,30 +13,27 @@ import {
   RtJwtGuard,
   UserIdFromJwt,
 } from '@taskfusion-microservices/common';
+import { CustomAmqpConnection } from '@taskfusion-microservices/common';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly customAmqpConnection: CustomAmqpConnection) {}
 
   @Post('create-client')
   async createClient(
     @Body() dto: CreateClientContract.Request
   ): Promise<CreateClientContract.Response> {
-    return this.authService.createUser<
-      CreateClientContract.Request,
-      CreateClientContract.Response
-    >(CreateClientContract.exchange, CreateClientContract.routingKey, dto);
+    return this.customAmqpConnection.requestOrThrow<CreateClientContract.Response>(
+      CreateClientContract.routingKey,
+      dto
+    );
   }
 
   @Post('create-developer')
   async createDeveloper(
     @Body() dto: CreateDeveloperContract.Request
   ): Promise<CreateDeveloperContract.Response> {
-    return this.authService.createUser<
-      CreateDeveloperContract.Request,
-      CreateDeveloperContract.Response
-    >(
-      CreateDeveloperContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<CreateDeveloperContract.Response>(
       CreateDeveloperContract.routingKey,
       dto
     );
@@ -47,10 +43,10 @@ export class AuthController {
   async createPm(
     @Body() dto: CreatePmContract.Request
   ): Promise<CreatePmContract.Response> {
-    return this.authService.createUser<
-      CreatePmContract.Request,
-      CreatePmContract.Response
-    >(CreatePmContract.exchange, CreatePmContract.routingKey, dto);
+    return this.customAmqpConnection.requestOrThrow<CreatePmContract.Response>(
+      CreatePmContract.routingKey,
+      dto
+    );
   }
 
   @UseGuards(RtJwtGuard)
@@ -59,34 +55,37 @@ export class AuthController {
     @UserIdFromJwt() userId: number,
     @JwtTokenFromBearer() refreshToken: string
   ): Promise<RefreshTokensContract.Response> {
-    return this.authService.refreshTokens(
-      RefreshTokensContract.exchange,
+    const payload: RefreshTokensContract.Dto = {
+      refreshToken,
+      userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<RefreshTokensContract.Response>(
       RefreshTokensContract.routingKey,
-      {
-        userId,
-        refreshToken,
-      }
+      payload
     );
   }
 
   @UseGuards(AtJwtGuard)
   @Post('logout')
   async logout(
-    @UserIdFromJwt() userId: number,
+    @UserIdFromJwt() userId: number
   ): Promise<LogoutContract.Response> {
-    return this.authService.logout(
-      LogoutContract.exchange,
+    const payload: LogoutContract.Dto = {
+      userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<LogoutContract.Response>(
       LogoutContract.routingKey,
-      {
-        userId,
-      }
+      payload
     );
   }
 
   @Post('login')
-  async login(@Body() dto: LoginContract.Request): Promise<LoginContract.Response> {
-    return this.authService.login(
-      LoginContract.exchange,
+  async login(
+    @Body() dto: LoginContract.Request
+  ): Promise<LoginContract.Response> {
+    return this.customAmqpConnection.requestOrThrow<LoginContract.Response>(
       LoginContract.routingKey,
       dto
     );
