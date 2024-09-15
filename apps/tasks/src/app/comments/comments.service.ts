@@ -1,5 +1,4 @@
 import {
-  AmqpConnection,
   defaultNackErrorHandler,
   MessageHandlerErrorBehavior,
   RabbitRPC,
@@ -14,18 +13,23 @@ import {
   GetUsersByIdsContract,
 } from '@taskfusion-microservices/contracts';
 import { CommentEntity } from '@taskfusion-microservices/entities';
-import { handleRpcRequest } from '@taskfusion-microservices/helpers';
 import { Repository } from 'typeorm';
 import { TasksService } from '../tasks/tasks.service';
+import {
+  BaseService,
+  CustomAmqpConnection,
+} from '@taskfusion-microservices/common';
 
 @Injectable()
-export class CommentsService {
+export class CommentsService extends BaseService {
   constructor(
     @InjectRepository(CommentEntity)
     private readonly commentRepository: Repository<CommentEntity>,
-    private readonly amqpConnection: AmqpConnection,
+    private readonly customAmqpConnection: CustomAmqpConnection,
     private readonly tasksService: TasksService
-  ) {}
+  ) {
+    super(CommentsService.name);
+  }
 
   @RabbitRPC({
     exchange: CreateCommentContract.exchange,
@@ -41,22 +45,18 @@ export class CommentsService {
   ): Promise<CreateCommentContract.Response> {
     const { taskId, text, userId } = dto;
 
-    const userResult =
-      await this.amqpConnection.request<GetUserByIdContract.Response>({
-        exchange: GetUserByIdContract.exchange,
-        routingKey: GetUserByIdContract.routingKey,
-        payload: {
-          id: userId,
-        } as GetUserByIdContract.Dto,
-      });
+    const getUserByIdDto: GetUserByIdContract.Dto = {
+      id: userId,
+    };
 
-    const user = await handleRpcRequest(
-      userResult,
-      async (response) => response
-    );
+    const user =
+      await this.customAmqpConnection.requestOrThrow<GetUserByIdContract.Response>(
+        GetUserByIdContract.routingKey,
+        getUserByIdDto
+      );
 
     if (!user) {
-      throw new NotFoundException('User not found!');
+      this.logAndThrowError(new NotFoundException('User not found!'));
     }
 
     const task = await this.tasksService.getTaskById({
@@ -64,7 +64,7 @@ export class CommentsService {
     });
 
     if (!task) {
-      throw new NotFoundException('Task not found!');
+      this.logAndThrowError(new NotFoundException('Task not found!'));
     }
 
     const comment = this.commentRepository.create({
@@ -75,15 +75,18 @@ export class CommentsService {
 
     await this.commentRepository.save(comment);
 
-    await this.amqpConnection.request({
-      exchange: CreateActionContract.exchange,
-      routingKey: CreateActionContract.routingKey,
-      payload: {
-        title: `Comment created by ${user.name}`,
-        userId,
-        taskId,
-      } as CreateActionContract.Dto,
-    });
+    const createActionDto: CreateActionContract.Dto = {
+      title: `Comment created by ${user.name}`,
+      userId,
+      taskId,
+    };
+
+    await this.customAmqpConnection.requestOrThrow(
+      CreateActionContract.routingKey,
+      createActionDto
+    );
+
+    this.logger.log(`Comment created: ${comment.id}`);
 
     return { id: comment.id };
   }
@@ -109,19 +112,17 @@ export class CommentsService {
 
     const userIds = commentsResult.map((action) => action.userId);
 
-    const usersResult =
-      await this.amqpConnection.request<GetUsersByIdsContract.Response>({
-        exchange: GetUsersByIdsContract.exchange,
-        routingKey: GetUsersByIdsContract.routingKey,
-        payload: {
-          ids: userIds,
-        } as GetUsersByIdsContract.Dto,
-      });
+    const getUsersByIdsDto: GetUsersByIdsContract.Dto = {
+      ids: userIds,
+    };
 
-    const users = await handleRpcRequest(
-      usersResult,
-      async (response) => response
-    );
+    const users =
+      await this.customAmqpConnection.requestOrThrow<GetUsersByIdsContract.Response>(
+        GetUsersByIdsContract.routingKey,
+        getUsersByIdsDto
+      );
+
+    this.logger.log('Retrieving comments by task id');
 
     return commentsResult.map((comment) => ({
       ...comment,

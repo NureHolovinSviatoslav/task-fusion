@@ -1,11 +1,11 @@
 import {
-  AmqpConnection,
   defaultNackErrorHandler,
   MessageHandlerErrorBehavior,
   RabbitRPC,
 } from '@golevelup/nestjs-rabbitmq';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { BaseService } from '@taskfusion-microservices/common';
 import {
   AssignUserToProjectContract,
   GetProjectDeveloperIdsContract,
@@ -20,12 +20,13 @@ import {
 import { Repository } from 'typeorm';
 
 @Injectable()
-export class AppService {
+export class ProjectsUsersService extends BaseService {
   constructor(
     @InjectRepository(ProjectsUsersEntity)
-    private readonly projectsUsersRepository: Repository<ProjectsUsersEntity>,
-    private readonly amqpConnection: AmqpConnection
-  ) {}
+    private readonly projectsUsersRepository: Repository<ProjectsUsersEntity>
+  ) {
+    super(ProjectsUsersService.name);
+  }
 
   @RabbitRPC({
     exchange: GetUserProjectIdsContract.exchange,
@@ -46,6 +47,8 @@ export class AppService {
         userId,
       },
     });
+
+    this.logger.log('Retrieving user project ids');
 
     return entries.map((entry) => entry.projectId);
   }
@@ -77,6 +80,8 @@ export class AppService {
       };
     }
 
+    this.logger.log('Retrieving project pm id');
+
     return {
       pmUserId: entry.userId,
     };
@@ -102,6 +107,8 @@ export class AppService {
         role: ProjectParticipantRole.DEVELOPER,
       },
     });
+
+    this.logger.log('Retrieving project developer ids');
 
     return {
       developerUserIds: entry.map((entry) => entry.userId),
@@ -144,6 +151,8 @@ export class AppService {
 
     await this.projectsUsersRepository.save(entity);
 
+    this.logger.log('Assigning user to project');
+
     return {
       success: true,
     };
@@ -182,6 +191,8 @@ export class AppService {
       userId,
       role,
     });
+
+    this.logger.log('Unassigning user from project');
 
     return {
       success: result.affected > 0,
