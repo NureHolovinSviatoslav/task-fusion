@@ -1,4 +1,4 @@
-import { RabbitRPC } from '@golevelup/nestjs-rabbitmq';
+import { defaultNackErrorHandler, RabbitRPC } from '@golevelup/nestjs-rabbitmq';
 import {
   BadRequestException,
   Injectable,
@@ -10,6 +10,7 @@ import {
   RejectPmInviteContract,
   GetPmInviteByIdContract,
   GetUserByIdContract,
+  CreateNotificationContract,
 } from '@taskfusion-microservices/contracts';
 import {
   UserType,
@@ -42,6 +43,7 @@ export class PmInvitesService extends BaseService {
     exchange: InvitePmContract.exchange,
     routingKey: InvitePmContract.routingKey,
     queue: InvitePmContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async invitePmRpcHandler(
     dto: InvitePmContract.Dto
@@ -58,7 +60,7 @@ export class PmInvitesService extends BaseService {
       projectId
     );
 
-    if (project.clientId !== clientUserId) {
+    if (project.clientUserId !== clientUserId) {
       throw new BadRequestException('Project does not belong to client');
     }
 
@@ -96,6 +98,12 @@ export class PmInvitesService extends BaseService {
       inviteId: invite.id,
       invitedUserType: UserType.PM,
     });
+
+    await this.sendInAppNotification(
+      'Project Invitation',
+      `/pm/project-invitation/${invite.id}`,
+      pmUser.id
+    );
 
     return { id: invite.id };
   }
@@ -176,6 +184,12 @@ export class PmInvitesService extends BaseService {
       invitedUserType: UserType.PM,
     });
 
+    await this.sendInAppNotification(
+      'Project Invitation was updated',
+      `/pm/project-invitation/${existingInvite.id}`,
+      pmUser.id
+    );
+
     return { id: existingInvite.id };
   }
 
@@ -207,10 +221,26 @@ export class PmInvitesService extends BaseService {
     });
   }
 
+  private async sendInAppNotification(
+    title: string,
+    redirectUrl: string,
+    userId: number
+  ) {
+    await this.customAmqpConnection.publishOrThrow(
+      CreateNotificationContract.routingKey,
+      {
+        title,
+        redirectUrl,
+        userId,
+      }
+    );
+  }
+
   @RabbitRPC({
     exchange: AcceptPmInviteContract.exchange,
     routingKey: AcceptPmInviteContract.routingKey,
     queue: AcceptPmInviteContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async acceptPmInviteRpcHandler(
     dto: AcceptPmInviteContract.Dto
@@ -236,17 +266,26 @@ export class PmInvitesService extends BaseService {
       inviteStatus: InviteStatus.ACCEPTED,
     });
 
-    return this.invitesHelperService.assignUserToProject(
+    const response = await this.invitesHelperService.assignUserToProject(
       invite.projectId,
       pmUserId,
       ProjectParticipantRole.PM
     );
+
+    await this.sendInAppNotification(
+      'Project Invitation was accepted',
+      `/pm/project-invitation/${inviteId}`,
+      invite.clientUserId
+    );
+
+    return response;
   };
 
   @RabbitRPC({
     exchange: RejectPmInviteContract.exchange,
     routingKey: RejectPmInviteContract.routingKey,
     queue: RejectPmInviteContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async rejectPmInviteRpcHandler(
     dto: RejectPmInviteContract.Dto
@@ -268,6 +307,12 @@ export class PmInvitesService extends BaseService {
     await this.updatePmInvite(invite, {
       inviteStatus: InviteStatus.REJECTED,
     });
+
+    await this.sendInAppNotification(
+      'Project Invitation was rejected',
+      `/pm/project-invitation/${inviteId}`,
+      invite.clientUserId
+    );
 
     return {
       success: true,
@@ -294,6 +339,7 @@ export class PmInvitesService extends BaseService {
     exchange: GetPmInviteByIdContract.exchange,
     routingKey: GetPmInviteByIdContract.routingKey,
     queue: GetPmInviteByIdContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getPmInviteByIdRpcHandler(
     dto: GetPmInviteByIdContract.Dto

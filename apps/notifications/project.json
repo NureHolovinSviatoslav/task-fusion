@@ -1,7 +1,7 @@
 {
-  "name": "email",
+  "name": "notifications",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "apps/email/src",
+  "sourceRoot": "apps/notifications/src",
   "projectType": "application",
   "tags": [],
   "targets": {
@@ -9,14 +9,14 @@
       "executor": "@nx/js:node",
       "defaultConfiguration": "development",
       "options": {
-        "buildTarget": "email:build"
+        "buildTarget": "notifications:build"
       },
       "configurations": {
         "development": {
-          "buildTarget": "email:build:development"
+          "buildTarget": "notifications:build:development"
         },
         "production": {
-          "buildTarget": "email:build:production"
+          "buildTarget": "notifications:build:production"
         }
       }
     }

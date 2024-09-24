@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import {
   AtJwtGuard,
   ClientGuard,
@@ -6,9 +6,10 @@ import {
   PmGuard,
 } from '@taskfusion-microservices/common';
 import {
-  AcceptPaymentRequestContract,
   CreateCheckoutSessionContract,
   CreatePaymentRequestContract,
+  GetClientPaymentRequestsContract,
+  GetPaymentRequestByIdContract,
   RejectPaymentRequestContract,
 } from '@taskfusion-microservices/contracts';
 
@@ -39,17 +40,6 @@ export class PaymentsController {
   }
 
   @UseGuards(AtJwtGuard, ClientGuard)
-  @Post('accept-payment-request')
-  async acceptPaymentRequest(
-    @Body() dto: AcceptPaymentRequestContract.Request
-  ): Promise<AcceptPaymentRequestContract.Response> {
-    return this.customAmqpConnection.requestOrThrow<AcceptPaymentRequestContract.Response>(
-      AcceptPaymentRequestContract.routingKey,
-      dto
-    );
-  }
-
-  @UseGuards(AtJwtGuard, ClientGuard)
   @Post('reject-payment-request')
   async rejectPaymentRequest(
     @Body() dto: RejectPaymentRequestContract.Request
@@ -57,6 +47,30 @@ export class PaymentsController {
     return this.customAmqpConnection.requestOrThrow<RejectPaymentRequestContract.Response>(
       RejectPaymentRequestContract.routingKey,
       dto
+    );
+  }
+
+  @UseGuards(AtJwtGuard, ClientGuard)
+  @Get('get-client-payment-requests')
+  async getClientPaymentRequests(
+    @Body() dto: GetClientPaymentRequestsContract.Request
+  ): Promise<GetClientPaymentRequestsContract.Response> {
+    return this.customAmqpConnection.requestOrThrow<GetClientPaymentRequestsContract.Response>(
+      GetClientPaymentRequestsContract.routingKey,
+      dto
+    );
+  }
+
+  @UseGuards(AtJwtGuard, ClientGuard)
+  @Get('get-payment-request-by-id/:paymentRequestId')
+  async getPaymentRequestById(
+    @Param('paymentRequestId') paymentRequestId: number
+  ): Promise<GetPaymentRequestByIdContract.Response> {
+    return this.customAmqpConnection.requestOrThrow<GetPaymentRequestByIdContract.Response>(
+      GetPaymentRequestByIdContract.routingKey,
+      {
+        paymentRequestId,
+      }
     );
   }
 }

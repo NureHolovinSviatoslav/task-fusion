@@ -38,8 +38,9 @@ export * from './contracts/profile/get-profile.contract';
 
 export * from './contracts/payments/create-checkout-session.contract';
 export * from './contracts/payments/create-payment-request.contract';
-export * from './contracts/payments/accept-payment-request.contract';
 export * from './contracts/payments/reject-payment-request.contract';
+export * from './contracts/payments/get-client-payment-requests.contract';
+export * from './contracts/payments/get-payment-request-by-id.contract';
 
 export * from './contracts/tasks/create-task.contract';
 export * from './contracts/tasks/get-tasks-by-status.contract';
@@ -72,3 +73,5 @@ export * from './contracts/invites/accept-developer-invite.contract';
 export * from './contracts/invites/reject-developer-invite.contract';
 
 export * from './contracts/email/send-email.contract';
+
+export * from './contracts/notifications/create-notification.contract';
