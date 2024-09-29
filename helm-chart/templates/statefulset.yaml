@@ -1,0 +1,58 @@
+{{- range .Values.databases }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .name | lower }}-db
+  labels:
+    app: {{ .name | lower }}-db
+spec:
+  serviceName: "{{ .name | lower }}-db"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .name | lower }}-db
+  template:
+    metadata:
+      labels:
+        app: {{ .name | lower }}-db
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: {{ .rootPassword | quote }}
+            - name: MYSQL_DATABASE
+              value: {{ .name | lower }}_db
+            - name: MYSQL_USER
+              value: {{ .user | quote }}
+            - name: MYSQL_PASSWORD
+              value: {{ .password | quote }}
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: mysql-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .name | lower }}-service
+spec:
+  type: NodePort
+  ports:
+    - port: 3306
+      targetPort: 3306
+      nodePort: {{ .nodePort }}
+      name: {{ .name }}-mysql
+  selector:
+    app: {{ .name | lower }}-db
+{{- end }}
