@@ -15,6 +15,8 @@ import {
   GetProjectDeveloperUsersContract,
   GetDeveloperProjectsContract,
   GetPmProjectsContract,
+  ValidateAccessToProjectContract,
+  GetProjectUsersContract,
 } from '@taskfusion-microservices/contracts';
 import {
   AtJwtGuard,
@@ -178,6 +180,32 @@ export class ProjectsController {
     return this.customAmqpConnection.requestOrThrow<GetProjectDeveloperUsersContract.Response>(
       GetProjectDeveloperUsersContract.routingKey,
       dto
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
+  @Post('/get-project-users')
+  async getProjectUsers(@Body() dto: GetProjectUsersContract.Request) {
+    return this.customAmqpConnection.requestOrThrow<GetProjectUsersContract.Response>(
+      GetProjectUsersContract.routingKey,
+      dto
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
+  @Get('/validate-access-to-project/:projectId')
+  async validateAccessToProject(
+    @Param('projectId') projectId: number,
+    @UserIdFromJwt() userId: number
+  ) {
+    const payload: ValidateAccessToProjectContract.Dto = {
+      projectId: +projectId,
+      userId: +userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<ValidateAccessToProjectContract.Response>(
+      ValidateAccessToProjectContract.routingKey,
+      payload
     );
   }
 
