@@ -1,0 +1,16 @@
+services:
+  projects-db:
+    image: mysql:8.0
+    container_name: projects-db
+    environment:
+      MYSQL_DATABASE: projects_db
+      MYSQL_USER: user
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_PASSWORD: password
+    ports:
+      - '3302:3306'
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+
+volumes:
+  mysql-data:
