@@ -5,8 +5,11 @@ import {
 } from '@golevelup/nestjs-rabbitmq';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { CreateClientContract } from '@taskfusion-microservices/contracts';
-import { ClientEntity } from '@taskfusion-microservices/entities';
+import {
+  CheckClientContract,
+  CreateClientContract,
+} from '@taskfusion-microservices/contracts';
+import { ClientEntity, UserType } from '@taskfusion-microservices/entities';
 import { Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 
@@ -30,7 +33,13 @@ export class ClientsService {
   async createClient(
     dto: CreateClientContract.Request
   ): Promise<CreateClientContract.Response> {
-    const user = await this.usersService.createUser(dto.email, dto.password);
+    const user = await this.usersService.createUser({
+      email: dto.email,
+      password: dto.password,
+      user_type: UserType.CLIENT,
+      telegram_id: dto.telegramId,
+      description: dto.description,
+    });
 
     const client = this.clientRepository.create({
       user,
@@ -38,8 +47,41 @@ export class ClientsService {
 
     await this.clientRepository.save(client);
 
+    const { accessToken, refreshToken } =
+      await this.usersService.generateTokens({
+        id: user.id,
+        email: user.email,
+        user_type: user.user_type,
+      });
+
+    await this.usersService.updateRefreshToken(user.id, refreshToken);
+
     return {
-      id: user.id,
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  @RabbitRPC({
+    exchange: CheckClientContract.exchange,
+    routingKey: CheckClientContract.routingKey,
+    queue: CheckClientContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'check-client',
+  })
+  async checkClient(
+    dto: CheckClientContract.Request
+  ): Promise<CheckClientContract.Response> {
+    const client = await this.clientRepository.findOne({
+      where: {
+        id: dto.client_id,
+      },
+    });
+
+    return {
+      exists: Boolean(client),
     };
   }
 }
