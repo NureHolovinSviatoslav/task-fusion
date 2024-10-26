@@ -3,7 +3,7 @@ import {
   GENERAL_EXCHANGE_NAME,
   USERS_QUEUE_NAME,
 } from '@taskfusion-microservices/constants';
-import { IsEmail, IsString, Length } from 'class-validator';
+import { IsEmail, IsString, Length, ValidateIf } from 'class-validator';
 
 export namespace CreateClientContract {
   export const exchange = GENERAL_EXCHANGE_NAME;
@@ -13,7 +13,8 @@ export namespace CreateClientContract {
   export const queue = `${USERS_QUEUE_NAME}.${routingKey}`;
 
   export type Response = Errorable<{
-    id: number;
+    accessToken: string;
+    refreshToken: string;
   }>;
 
   export class Request {
@@ -23,5 +24,12 @@ export namespace CreateClientContract {
     @IsString()
     @Length(6)
     password: string;
+
+    @IsString()
+    @ValidateIf((_, v) => v !== null)
+    telegramId: string | null;
+
+    @IsString()
+    description: string;
   }
 }

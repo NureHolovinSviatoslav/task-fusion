@@ -13,15 +13,22 @@ export enum UserType {
   name: 'users',
 })
 export class UserEntity {
-  @PrimaryGeneratedColumn({
-    
-  })
+  @PrimaryGeneratedColumn()
   id: number;
 
   @Column({
     unique: true,
   })
   email: string;
+
+  @Column()
+  description: string;
+
+  @Column({
+    nullable: true,
+    default: true
+  })
+  telegram_id: string | null;
 
   @Column()
   password: string;
@@ -31,6 +38,13 @@ export class UserEntity {
     enum: UserType,
   })
   user_type: string;
+
+  @Column({
+    nullable: true,
+    default: null,
+    type: 'text',
+  })
+  refresh_token: string | null;
 
   @OneToOne(() => ClientEntity, (client) => client.user)
   client: ClientEntity;
