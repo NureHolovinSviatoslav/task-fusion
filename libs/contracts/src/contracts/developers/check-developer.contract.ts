@@ -5,10 +5,10 @@ import {
 } from '@taskfusion-microservices/constants';
 import { IsInt } from 'class-validator';
 
-export namespace CheckClientContract {
+export namespace CheckDeveloperContract {
   export const exchange = GENERAL_EXCHANGE_NAME;
 
-  export const routingKey = `check-client`;
+  export const routingKey = `check-developer`;
 
   export const queue = `${USERS_QUEUE_NAME}.${routingKey}`;
 
@@ -18,6 +18,6 @@ export namespace CheckClientContract {
 
   export class Request {
     @IsInt()
-    client_id: number;
+    developerId: number;
   }
 }

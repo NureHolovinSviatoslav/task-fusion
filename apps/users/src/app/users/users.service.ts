@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -11,6 +10,7 @@ import { DeepPartial, Repository } from 'typeorm';
 import bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 import {
+  GetProfileContract,
   LoginContract,
   LogoutContract,
   RefreshTokensContract,
@@ -43,7 +43,7 @@ export class UsersService {
     dto: RefreshTokensContract.Dto
   ): Promise<RefreshTokensContract.Response> {
     const user = await this.userRepository.findOne({
-      where: { id: dto.userId, refresh_token: dto.refreshToken },
+      where: { id: dto.userId },
     });
 
     if (!user) {
@@ -53,10 +53,12 @@ export class UsersService {
     const { accessToken, refreshToken } = await this.generateTokens({
       id: user.id,
       email: user.email,
-      user_type: user.user_type,
+      userType: user.userType,
     });
 
-    await this.updateRefreshToken(user.id, refreshToken);
+    await this.updateUser(user.id, {
+      refreshToken,
+    });
 
     return {
       accessToken,
@@ -85,16 +87,18 @@ export class UsersService {
     const isMatch = await bcrypt.compare(dto.password, user.password);
 
     if (!isMatch) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new BadRequestException('Invalid credentials');
     }
 
     const { accessToken, refreshToken } = await this.generateTokens({
       id: user.id,
       email: user.email,
-      user_type: user.user_type,
+      userType: user.userType,
     });
 
-    await this.updateRefreshToken(user.id, refreshToken);
+    await this.updateUser(user.id, {
+      refreshToken,
+    });
 
     return {
       accessToken,
@@ -120,22 +124,55 @@ export class UsersService {
       throw new BadRequestException('Invalid refresh token');
     }
 
-    await this.updateRefreshToken(user.id, null);
+    await this.updateUser(user.id, {
+      refreshToken: null,
+    });
 
     return {
       userId: user.id,
     };
   }
 
+  @RabbitRPC({
+    exchange: GetProfileContract.exchange,
+    routingKey: GetProfileContract.routingKey,
+    queue: GetProfileContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'get-profile',
+  })
+  async getProfile(
+    dto: GetProfileContract.Dto
+  ): Promise<GetProfileContract.Response> {
+    const user = await this.userRepository.findOne({
+      where: { id: dto.userId },
+      relations: ['client', 'pm', 'developer'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('Invalid refresh token');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      userType: user.userType,
+      description: user.description,
+      telegramId: user.telegramId,
+      name: user.name,
+      client: user.client,
+      pm: user.pm,
+      developer: user.developer,
+    };
+  }
+
   async createUser(userParams: DeepPartial<UserEntity>) {
-    const { email, password, telegram_id, user_type, description } = userParams;
+    const { password, ...rest } = userParams;
 
     const user = this.userRepository.create({
-      email,
+      ...rest,
       password: await this.hashPassword(password),
-      description,
-      telegram_id,
-      user_type,
     });
 
     await this.userRepository.save(user);
@@ -143,14 +180,8 @@ export class UsersService {
     return user;
   }
 
-  async updateRefreshToken(
-    userId: number,
-    refreshToken: UserEntity['refresh_token']
-  ) {
-    const user = await this.userRepository.update(
-      { id: userId },
-      { refresh_token: refreshToken }
-    );
+  async updateUser(userId: number, userParams: DeepPartial<UserEntity>) {
+    const user = await this.userRepository.update({ id: userId }, userParams);
 
     return user;
   }
@@ -162,10 +193,10 @@ export class UsersService {
   async generateTokens(payload: {
     id: number;
     email: string;
-    user_type: string;
+    userType: string;
   }) {
     const accessToken = await this.signPayload(payload, {
-      expiresIn: '1h',
+      expiresIn: '30s',
       secret: this.configService.get<string>('AT_SECRET'),
     });
 

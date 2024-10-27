@@ -1,16 +1,16 @@
 import { Errorable } from '@taskfusion-microservices/types';
 import {
   GENERAL_EXCHANGE_NAME,
-  USERS_QUEUE_NAME,
+  PROJECTS_QUEUE_NAME,
 } from '@taskfusion-microservices/constants';
 import { IsInt } from 'class-validator';
 
-export namespace CheckPmContract {
+export namespace CheckProjectContract {
   export const exchange = GENERAL_EXCHANGE_NAME;
 
-  export const routingKey = `check-pm`;
+  export const routingKey = `check-project`;
 
-  export const queue = `${USERS_QUEUE_NAME}.${routingKey}`;
+  export const queue = `${PROJECTS_QUEUE_NAME}.${routingKey}`;
 
   export type Response = Errorable<{
     exists: boolean;
@@ -18,6 +18,6 @@ export namespace CheckPmContract {
 
   export class Request {
     @IsInt()
-    pm_id: number;
+    projectId: number;
   }
 }

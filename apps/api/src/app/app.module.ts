@@ -4,6 +4,8 @@ import { RmqDynamicModule } from '@taskfusion-microservices/modules';
 import { ProjectsModule } from './projects/projects.module';
 import { AtJwtStrategy, RtJwtStrategy } from '@taskfusion-microservices/common';
 import { ConfigModule } from '@nestjs/config';
+import { UsersModule } from './users/users.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { ConfigModule } from '@nestjs/config';
     RmqDynamicModule.register(),
     AuthModule,
     ProjectsModule,
+    UsersModule,
+    TasksModule,
   ],
   providers: [AtJwtStrategy, RtJwtStrategy],
 })
