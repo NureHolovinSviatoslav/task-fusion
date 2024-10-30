@@ -5,10 +5,10 @@ import {
 } from '@taskfusion-microservices/constants';
 import { IsEmail, IsString, Length, ValidateIf } from 'class-validator';
 
-export namespace CreateClientContract {
+export namespace CreateDeveloperContract {
   export const exchange = GENERAL_EXCHANGE_NAME;
 
-  export const routingKey = `create-client`;
+  export const routingKey = `create-developer`;
 
   export const queue = `${USERS_QUEUE_NAME}.${routingKey}`;
 
@@ -18,6 +18,9 @@ export namespace CreateClientContract {
   }>;
 
   export class Request {
+    @IsString()
+    name: string;
+
     @IsEmail()
     email: string;
 
