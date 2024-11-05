@@ -3,15 +3,23 @@ import { ProjectsService } from './projects.service';
 import {
   AcceptPmInviteContract,
   CreateProjectContract,
+  GetPmInviteByIdContract,
   GetProjectByIdContract,
   GetProjectPmUserContract,
-  GetProjectsContract,
+  GetClientProjectsContract,
   InvitePmContract,
   RejectPmInviteContract,
+  GetPmProjectsContract,
+  InviteDeveloperContract,
+  AcceptDeveloperInviteContract,
+  RejectDeveloperInviteContract,
+  GetDeveloperInviteByIdContract,
+  GetProjectDeveloperUsersContract,
 } from '@taskfusion-microservices/contracts';
 import {
   AtJwtGuard,
   ClientGuard,
+  DeveloperGuard,
   PmGuard,
   UserIdFromJwt,
 } from '@taskfusion-microservices/common';
@@ -32,16 +40,30 @@ export class ProjectsController {
     );
   }
 
-  @UseGuards(AtJwtGuard)
-  @Get()
-  async getProjects(
-    @UserIdFromJwt() userId: number
-  ): Promise<GetProjectsContract.Response> {
-    return this.projectsService.getProjects(
-      GetProjectsContract.exchange,
-      GetProjectsContract.routingKey,
+  @UseGuards(AtJwtGuard, ClientGuard)
+  @Get('get-client-projects')
+  async getClientProjects(
+    @UserIdFromJwt() clientUserId: number
+  ): Promise<GetClientProjectsContract.Response> {
+    return this.projectsService.getClientProjects(
+      GetClientProjectsContract.exchange,
+      GetClientProjectsContract.routingKey,
       {
-        userId,
+        clientUserId,
+      }
+    );
+  }
+
+  @UseGuards(AtJwtGuard, PmGuard)
+  @Get('get-pm-projects')
+  async getPmProjects(
+    @UserIdFromJwt() pmUserId: number
+  ): Promise<GetPmProjectsContract.Response> {
+    return this.projectsService.getPmProjects(
+      GetPmProjectsContract.exchange,
+      GetPmProjectsContract.routingKey,
+      {
+        pmUserId,
       }
     );
   }
@@ -49,7 +71,6 @@ export class ProjectsController {
   @UseGuards(AtJwtGuard)
   @Get(':id')
   async getProjectById(
-    @UserIdFromJwt() userId: number,
     @Param('id') id: number
   ): Promise<GetProjectByIdContract.Response> {
     return this.projectsService.getProjectById(
@@ -111,11 +132,94 @@ export class ProjectsController {
   }
 
   @UseGuards(AtJwtGuard)
+  @Post('/invites/get-pm-invite-by-id')
+  async getInviteById(@Body() dto: GetPmInviteByIdContract.Request) {
+    return this.projectsService.getPmInviteById(
+      GetPmInviteByIdContract.exchange,
+      GetPmInviteByIdContract.routingKey,
+      dto
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
   @Post('/get-project-pm-user')
   async getProjectPmUser(@Body() dto: GetProjectPmUserContract.Request) {
     return this.projectsService.getProjectPmUser(
       GetProjectPmUserContract.exchange,
       GetProjectPmUserContract.routingKey,
+      dto
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
+  @Post('/get-project-developer-users')
+  async getProjectDeveloperUsers(
+    @Body() dto: GetProjectDeveloperUsersContract.Request
+  ) {
+    return this.projectsService.getProjectDeveloperUsers(
+      GetProjectDeveloperUsersContract.exchange,
+      GetProjectDeveloperUsersContract.routingKey,
+      dto
+    );
+  }
+
+  @UseGuards(AtJwtGuard, PmGuard)
+  @Post('/invites/invite-developer')
+  async inviteDeveloper(
+    @Body() dto: InviteDeveloperContract.Request,
+    @UserIdFromJwt() userId: number
+  ) {
+    return this.projectsService.inviteDeveloper(
+      InviteDeveloperContract.exchange,
+      InviteDeveloperContract.routingKey,
+      {
+        pmUserId: userId,
+        email: dto.email,
+        projectId: dto.projectId,
+      }
+    );
+  }
+
+  @UseGuards(AtJwtGuard, DeveloperGuard)
+  @Post('/invites/accept-developer-invite')
+  async acceptDeveloperInvite(
+    @Body() dto: AcceptDeveloperInviteContract.Request,
+    @UserIdFromJwt() userId: number
+  ) {
+    return this.projectsService.acceptDeveloperInvite(
+      AcceptDeveloperInviteContract.exchange,
+      AcceptDeveloperInviteContract.routingKey,
+      {
+        inviteId: dto.inviteId,
+        developerUserId: userId,
+      }
+    );
+  }
+
+  @UseGuards(AtJwtGuard, DeveloperGuard)
+  @Post('/invites/reject-developer-invite')
+  async rejectDeveloperInvite(
+    @Body() dto: RejectDeveloperInviteContract.Request,
+    @UserIdFromJwt() userId: number
+  ) {
+    return this.projectsService.rejectDeveloperInvite(
+      RejectDeveloperInviteContract.exchange,
+      RejectDeveloperInviteContract.routingKey,
+      {
+        inviteId: dto.inviteId,
+        developerUserId: userId,
+      }
+    );
+  }
+
+  @UseGuards(AtJwtGuard)
+  @Post('/invites/get-developer-invite-by-id')
+  async getDeveloperInviteById(
+    @Body() dto: GetDeveloperInviteByIdContract.Request
+  ) {
+    return this.projectsService.getDeveloperInviteById(
+      GetDeveloperInviteByIdContract.exchange,
+      GetDeveloperInviteByIdContract.routingKey,
       dto
     );
   }

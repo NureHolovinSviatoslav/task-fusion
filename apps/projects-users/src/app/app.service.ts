@@ -8,7 +8,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   AssignUserToProjectContract,
+  GetProjectDeveloperIdsContract,
   GetProjectPmIdContract,
+  GetUserProjectIdsContract,
   UnassignUserFromProjectContract,
 } from '@taskfusion-microservices/contracts';
 import {
@@ -21,9 +23,32 @@ import { Repository } from 'typeorm';
 export class AppService {
   constructor(
     @InjectRepository(ProjectsUsersEntity)
-    private readonly tasksUsersRepository: Repository<ProjectsUsersEntity>,
+    private readonly projectsUsersRepository: Repository<ProjectsUsersEntity>,
     private readonly amqpConnection: AmqpConnection
   ) {}
+
+  @RabbitRPC({
+    exchange: GetUserProjectIdsContract.exchange,
+    routingKey: GetUserProjectIdsContract.routingKey,
+    queue: GetUserProjectIdsContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'get-user-project-ids',
+  })
+  async getUserProjectIds(
+    dto: GetUserProjectIdsContract.Dto
+  ): Promise<GetUserProjectIdsContract.Response> {
+    const { userId } = dto;
+
+    const entries = await this.projectsUsersRepository.find({
+      where: {
+        userId,
+      },
+    });
+
+    return entries.map((entry) => entry.projectId);
+  }
 
   @RabbitRPC({
     exchange: GetProjectPmIdContract.exchange,
@@ -39,7 +64,7 @@ export class AppService {
   ): Promise<GetProjectPmIdContract.Response> {
     const { projectId } = dto;
 
-    const entry = await this.tasksUsersRepository.findOne({
+    const entry = await this.projectsUsersRepository.findOne({
       where: {
         projectId,
         role: ProjectParticipantRole.PM,
@@ -58,6 +83,32 @@ export class AppService {
   }
 
   @RabbitRPC({
+    exchange: GetProjectDeveloperIdsContract.exchange,
+    routingKey: GetProjectDeveloperIdsContract.routingKey,
+    queue: GetProjectDeveloperIdsContract.queue,
+    errorBehavior: MessageHandlerErrorBehavior.NACK,
+    errorHandler: defaultNackErrorHandler,
+    allowNonJsonMessages: true,
+    name: 'get-project-developer-ids',
+  })
+  async getProjectDeveloperIds(
+    dto: GetProjectDeveloperIdsContract.Dto
+  ): Promise<GetProjectDeveloperIdsContract.Response> {
+    const { projectId } = dto;
+
+    const entry = await this.projectsUsersRepository.find({
+      where: {
+        projectId,
+        role: ProjectParticipantRole.DEVELOPER,
+      },
+    });
+
+    return {
+      developerUserIds: entry.map((entry) => entry.userId),
+    };
+  }
+
+  @RabbitRPC({
     exchange: AssignUserToProjectContract.exchange,
     routingKey: AssignUserToProjectContract.routingKey,
     queue: AssignUserToProjectContract.queue,
@@ -71,11 +122,11 @@ export class AppService {
   ): Promise<AssignUserToProjectContract.Response> {
     const { projectId, userId, role } = dto;
 
-    const entry = await this.tasksUsersRepository.findOne({
+    const entry = await this.projectsUsersRepository.findOne({
       where: {
         projectId,
         userId,
-        role
+        role,
       },
     });
 
@@ -85,17 +136,17 @@ export class AppService {
       };
     }
 
-    const entity = this.tasksUsersRepository.create({
+    const entity = this.projectsUsersRepository.create({
       projectId,
       userId,
-      role
+      role,
     });
 
-    await this.tasksUsersRepository.save(entity);
+    await this.projectsUsersRepository.save(entity);
 
     return {
       success: true,
-    }
+    };
   }
 
   @RabbitRPC({
@@ -112,11 +163,11 @@ export class AppService {
   ): Promise<UnassignUserFromProjectContract.Response> {
     const { projectId, userId, role } = dto;
 
-    const entry = await this.tasksUsersRepository.findOne({
+    const entry = await this.projectsUsersRepository.findOne({
       where: {
         projectId,
         userId,
-        role
+        role,
       },
     });
 
@@ -126,14 +177,14 @@ export class AppService {
       };
     }
 
-    const result = await this.tasksUsersRepository.delete({
+    const result = await this.projectsUsersRepository.delete({
       projectId,
       userId,
-      role
+      role,
     });
 
     return {
       success: result.affected > 0,
-    }
+    };
   }
 }
