@@ -1,10 +1,9 @@
 import {
-  AmqpConnection,
   defaultNackErrorHandler,
   MessageHandlerErrorBehavior,
   RabbitRPC,
 } from '@golevelup/nestjs-rabbitmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   CreateActionContract,
@@ -14,16 +13,21 @@ import {
 import { ActionEntity } from '@taskfusion-microservices/entities';
 import { Repository } from 'typeorm';
 import { TasksService } from '../tasks/tasks.service';
-import { handleRpcRequest } from '@taskfusion-microservices/helpers';
+import {
+  BaseService,
+  CustomAmqpConnection,
+} from '@taskfusion-microservices/common';
 
 @Injectable()
-export class ActionsService {
+export class ActionsService extends BaseService {
   constructor(
     @InjectRepository(ActionEntity)
     private readonly actionRepository: Repository<ActionEntity>,
-    private readonly amqpConnection: AmqpConnection,
+    private readonly customAmqpConnection: CustomAmqpConnection,
     private readonly tasksService: TasksService
-  ) {}
+  ) {
+    super(ActionsService.name);
+  }
 
   @RabbitRPC({
     exchange: CreateActionContract.exchange,
@@ -42,7 +46,7 @@ export class ActionsService {
     });
 
     if (!task) {
-      throw new Error('Task not found!');
+      this.logAndThrowError(new NotFoundException('Task not found!'));
     }
 
     const action = this.actionRepository.create({
@@ -52,6 +56,8 @@ export class ActionsService {
     });
 
     await this.actionRepository.save(action);
+
+    this.logger.log(`Action created: ${action.id}`);
 
     return action;
   }
@@ -79,19 +85,17 @@ export class ActionsService {
 
     const userIds = actionsResult.map((action) => action.userId);
 
-    const usersResult =
-      await this.amqpConnection.request<GetUsersByIdsContract.Response>({
-        exchange: GetUsersByIdsContract.exchange,
-        routingKey: GetUsersByIdsContract.routingKey,
-        payload: {
-          ids: userIds,
-        } as GetUsersByIdsContract.Dto,
-      });
+    const getUsersByIdsDto: GetUsersByIdsContract.Dto = {
+      ids: userIds,
+    };
 
-    const users = await handleRpcRequest(
-      usersResult,
-      async (response) => response
-    );
+    const users =
+      await this.customAmqpConnection.requestOrThrow<GetUsersByIdsContract.Response>(
+        GetUsersByIdsContract.routingKey,
+        getUsersByIdsDto
+      );
+
+    this.logger.log('Retrieving actions by task id');
 
     return actionsResult.map((action) => ({
       ...action,
