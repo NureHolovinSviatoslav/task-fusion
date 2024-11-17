@@ -1,8 +1,4 @@
-import {
-  RabbitRPC,
-  MessageHandlerErrorBehavior,
-  defaultNackErrorHandler,
-} from '@golevelup/nestjs-rabbitmq';
+import { RabbitRPC } from '@golevelup/nestjs-rabbitmq';
 import {
   BadRequestException,
   Injectable,
@@ -26,7 +22,10 @@ import {
 import { InvitesHelperService } from './invites-helper.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeepPartial, FindOptionsWhere, Repository } from 'typeorm';
-import { BaseService, CustomAmqpConnection } from '@taskfusion-microservices/common';
+import {
+  BaseService,
+  CustomAmqpConnection,
+} from '@taskfusion-microservices/common';
 
 @Injectable()
 export class PmInvitesService extends BaseService {
@@ -43,10 +42,6 @@ export class PmInvitesService extends BaseService {
     exchange: InvitePmContract.exchange,
     routingKey: InvitePmContract.routingKey,
     queue: InvitePmContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'invite-pm',
   })
   async invitePmRpcHandler(
     dto: InvitePmContract.Dto
@@ -74,9 +69,7 @@ export class PmInvitesService extends BaseService {
       UserType.PM
     );
 
-    const clientUser = await this.getClientUserByIdOrThrow(
-      clientUserId
-    );
+    const clientUser = await this.getClientUserByIdOrThrow(clientUserId);
 
     await this.invitesHelperService.throwIfUserTypeDoesNotMatch(
       clientUser,
@@ -90,11 +83,7 @@ export class PmInvitesService extends BaseService {
     });
 
     if (existingInvite) {
-      return this.handleExistingPmInvite(
-        existingInvite,
-        pmUser,
-        clientUser
-      );
+      return this.handleExistingPmInvite(existingInvite, pmUser, clientUser);
     }
 
     const invite = await this.createPmInvite(clientUserId, pmUser.id, project);
@@ -111,13 +100,13 @@ export class PmInvitesService extends BaseService {
     return { id: invite.id };
   }
 
-  async findPmInvite(where: FindOptionsWhere<PmInviteEntity>) {
+  private async findPmInvite(where: FindOptionsWhere<PmInviteEntity>) {
     return this.pmInviteEntityRepositoty.findOne({
       where,
     });
   }
 
-  async getClientUserById(clientUserId: number) {
+  private async getClientUserById(clientUserId: number) {
     const payload: GetUserByIdContract.Dto = {
       id: clientUserId,
     };
@@ -130,33 +119,28 @@ export class PmInvitesService extends BaseService {
 
     return clientUser;
   }
-  async getClientUserByIdOrThrow(clientUserId: number) {
+
+  private async getClientUserByIdOrThrow(clientUserId: number) {
     const clientUser = await this.getClientUserById(clientUserId);
 
     if (!clientUser) {
-      this.logAndThrowError(
-        new NotFoundException('Client user not found')
-      );
+      this.logAndThrowError(new NotFoundException('Client user not found'));
     }
 
     return clientUser;
   }
 
-  async handleExistingPmInvite(
+  private async handleExistingPmInvite(
     existingInvite: PmInviteEntity,
     pmUser: UserEntity,
     clientUser: UserEntity
   ) {
     switch (existingInvite.inviteStatus) {
       case InviteStatus.ACCEPTED:
-        return this.logAndThrowError(
-          'Invite already accepted'
-        );
+        return this.logAndThrowError('Invite already accepted');
 
       case InviteStatus.REJECTED:
-        return this.logAndThrowError(
-          'Invite already rejected'
-        );
+        return this.logAndThrowError('Invite already rejected');
 
       case InviteStatus.PENDING:
         return this.handlePendingExistingPmInvite(
@@ -166,21 +150,17 @@ export class PmInvitesService extends BaseService {
         );
 
       default:
-        return this.logAndThrowError(
-          'Unhandled invite status'
-        );
+        return this.logAndThrowError('Unhandled invite status');
     }
   }
 
-  async handlePendingExistingPmInvite(
+  private async handlePendingExistingPmInvite(
     existingInvite: PmInviteEntity,
     pmUser: UserEntity,
     clientUser: UserEntity
   ) {
     if (this.isPmInviteActive(existingInvite)) {
-      this.logAndThrowError(
-        'Active invite already exists'
-      );
+      this.logAndThrowError('Active invite already exists');
     }
 
     await this.updatePmInvite(existingInvite, {
@@ -199,7 +179,7 @@ export class PmInvitesService extends BaseService {
     return { id: existingInvite.id };
   }
 
-  async updatePmInvite(
+  private async updatePmInvite(
     existingInvite: PmInviteEntity,
     updatedFields: DeepPartial<PmInviteEntity>
   ) {
@@ -211,7 +191,7 @@ export class PmInvitesService extends BaseService {
     );
   }
 
-  async createPmInvite(
+  private async createPmInvite(
     clientUserId: number,
     pmUserId: number,
     project: ProjectEntity
@@ -231,10 +211,6 @@ export class PmInvitesService extends BaseService {
     exchange: AcceptPmInviteContract.exchange,
     routingKey: AcceptPmInviteContract.routingKey,
     queue: AcceptPmInviteContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'accept-pm-invite',
   })
   async acceptPmInviteRpcHandler(
     dto: AcceptPmInviteContract.Dto
@@ -271,10 +247,6 @@ export class PmInvitesService extends BaseService {
     exchange: RejectPmInviteContract.exchange,
     routingKey: RejectPmInviteContract.routingKey,
     queue: RejectPmInviteContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'reject-pm-invite',
   })
   async rejectPmInviteRpcHandler(
     dto: RejectPmInviteContract.Dto
@@ -302,7 +274,7 @@ export class PmInvitesService extends BaseService {
     };
   }
 
-  async throwIfPmInviteIsNotActive(invite: PmInviteEntity) {
+  private async throwIfPmInviteIsNotActive(invite: PmInviteEntity) {
     if (!this.isPmInviteActive(invite)) {
       this.logAndThrowError(
         new BadRequestException('Invite is not valid anymore')
@@ -310,7 +282,7 @@ export class PmInvitesService extends BaseService {
     }
   }
 
-  isPmInviteActive(invite: PmInviteEntity) {
+  private isPmInviteActive(invite: PmInviteEntity) {
     return (
       new Date(invite.expiresAt) > new Date() &&
       invite.pmUserId === invite.pmUserId &&
@@ -322,10 +294,6 @@ export class PmInvitesService extends BaseService {
     exchange: GetPmInviteByIdContract.exchange,
     routingKey: GetPmInviteByIdContract.routingKey,
     queue: GetPmInviteByIdContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'get-pm-invite-by-id',
   })
   async getPmInviteByIdRpcHandler(
     dto: GetPmInviteByIdContract.Dto
