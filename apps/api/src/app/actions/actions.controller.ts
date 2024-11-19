@@ -1,23 +1,26 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
-import { ActionsService } from './actions.service';
-import { AtJwtGuard } from '@taskfusion-microservices/common';
+import {
+  AtJwtGuard,
+  CustomAmqpConnection,
+} from '@taskfusion-microservices/common';
 import { GetActionsByTaskIdContract } from '@taskfusion-microservices/contracts';
 
 @Controller('actions')
 export class ActionsController {
-  constructor(private readonly actionsService: ActionsService) {}
+  constructor(private readonly customAmqpConnection: CustomAmqpConnection) {}
 
   @UseGuards(AtJwtGuard)
   @Get('get-actions-by-task-id/:taskId')
   async getActionsByTaskId(
     @Param('taskId') taskId: number
   ): Promise<GetActionsByTaskIdContract.Response> {
-    return this.actionsService.getActionsByTaskId(
-      GetActionsByTaskIdContract.exchange,
+    const payload: GetActionsByTaskIdContract.Dto = {
+      taskId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetActionsByTaskIdContract.Response>(
       GetActionsByTaskIdContract.routingKey,
-      {
-        taskId,
-      }
+      payload
     );
   }
 }

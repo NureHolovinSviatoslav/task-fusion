@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { AtJwtGuard, UserIdFromJwt } from '@taskfusion-microservices/common';
+import {
+  AtJwtGuard,
+  CustomAmqpConnection,
+  UserIdFromJwt,
+} from '@taskfusion-microservices/common';
 import {
   CheckDeveloperEmailContract,
   CheckPmEmailContract,
@@ -9,19 +12,20 @@ import {
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly customAmqpConnection: CustomAmqpConnection) {}
 
   @UseGuards(AtJwtGuard)
   @Get('profile')
   async getProfile(
     @UserIdFromJwt() userId: number
   ): Promise<GetProfileContract.Response> {
-    return this.usersService.getProfile(
-      GetProfileContract.exchange,
+    const payload: GetProfileContract.Dto = {
+      userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetProfileContract.Response>(
       GetProfileContract.routingKey,
-      {
-        userId,
-      }
+      payload
     );
   }
 
@@ -30,8 +34,7 @@ export class UsersController {
   async checkPmEmail(
     @Body() dto: CheckPmEmailContract.Request
   ): Promise<CheckPmEmailContract.Response> {
-    return this.usersService.checkPmEmail(
-      CheckPmEmailContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<CheckPmEmailContract.Response>(
       CheckPmEmailContract.routingKey,
       dto
     );
@@ -42,8 +45,7 @@ export class UsersController {
   async checkDeveloperEmail(
     @Body() dto: CheckDeveloperEmailContract.Request
   ): Promise<CheckDeveloperEmailContract.Response> {
-    return this.usersService.checkDeveloperEmail(
-      CheckDeveloperEmailContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<CheckDeveloperEmailContract.Response>(
       CheckDeveloperEmailContract.routingKey,
       dto
     );

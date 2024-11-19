@@ -1,5 +1,4 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ProjectsService } from './projects.service';
 import {
   AcceptPmInviteContract,
   CreateProjectContract,
@@ -20,6 +19,7 @@ import {
 import {
   AtJwtGuard,
   ClientGuard,
+  CustomAmqpConnection,
   DeveloperGuard,
   PmGuard,
   UserIdFromJwt,
@@ -27,15 +27,14 @@ import {
 
 @Controller('projects')
 export class ProjectsController {
-  constructor(private readonly projectsService: ProjectsService) {}
+  constructor(private readonly customAmqpConnection: CustomAmqpConnection) {}
 
   @UseGuards(AtJwtGuard)
   @Post('create-project')
   async createProject(
     @Body() dto: CreateProjectContract.Request
   ): Promise<CreateProjectContract.Response> {
-    return this.projectsService.createProject(
-      CreateProjectContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<CreateProjectContract.Response>(
       CreateProjectContract.routingKey,
       dto
     );
@@ -46,12 +45,13 @@ export class ProjectsController {
   async getClientProjects(
     @UserIdFromJwt() clientUserId: number
   ): Promise<GetClientProjectsContract.Response> {
-    return this.projectsService.getClientProjects(
-      GetClientProjectsContract.exchange,
+    const payload: GetClientProjectsContract.Dto = {
+      clientUserId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetClientProjectsContract.Response>(
       GetClientProjectsContract.routingKey,
-      {
-        clientUserId,
-      }
+      payload
     );
   }
 
@@ -60,12 +60,13 @@ export class ProjectsController {
   async getDeveloperProjects(
     @UserIdFromJwt() developerUserId: number
   ): Promise<GetDeveloperProjectsContract.Response> {
-    return this.projectsService.getDeveloperProjects(
-      GetDeveloperProjectsContract.exchange,
+    const payload: GetDeveloperProjectsContract.Dto = {
+      developerUserId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetDeveloperProjectsContract.Response>(
       GetDeveloperProjectsContract.routingKey,
-      {
-        developerUserId,
-      }
+      payload
     );
   }
 
@@ -74,12 +75,13 @@ export class ProjectsController {
   async getPmProjects(
     @UserIdFromJwt() pmUserId: number
   ): Promise<GetPmProjectsContract.Response> {
-    return this.projectsService.getPmProjects(
-      GetPmProjectsContract.exchange,
+    const payload: GetPmProjectsContract.Dto = {
+      pmUserId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetPmProjectsContract.Response>(
       GetPmProjectsContract.routingKey,
-      {
-        pmUserId,
-      }
+      payload
     );
   }
 
@@ -88,12 +90,13 @@ export class ProjectsController {
   async getProjectById(
     @Param('id') id: number
   ): Promise<GetProjectByIdContract.Response> {
-    return this.projectsService.getProjectById(
-      GetProjectByIdContract.exchange,
+    const payload: GetProjectByIdContract.Dto = {
+      projectId: id,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetProjectByIdContract.Response>(
       GetProjectByIdContract.routingKey,
-      {
-        projectId: id,
-      }
+      payload
     );
   }
 
@@ -103,14 +106,15 @@ export class ProjectsController {
     @Body() dto: InvitePmContract.Request,
     @UserIdFromJwt() userId: number
   ) {
-    return this.projectsService.invitePm(
-      InvitePmContract.exchange,
+    const payload: InvitePmContract.Dto = {
+      clientUserId: userId,
+      email: dto.email,
+      projectId: dto.projectId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<InvitePmContract.Response>(
       InvitePmContract.routingKey,
-      {
-        clientUserId: userId,
-        email: dto.email,
-        projectId: dto.projectId,
-      }
+      payload
     );
   }
 
@@ -120,13 +124,14 @@ export class ProjectsController {
     @Body() dto: AcceptPmInviteContract.Request,
     @UserIdFromJwt() userId: number
   ) {
-    return this.projectsService.acceptPmInvite(
-      AcceptPmInviteContract.exchange,
+    const payload: AcceptPmInviteContract.Dto = {
+      inviteId: dto.inviteId,
+      pmUserId: userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<AcceptPmInviteContract.Response>(
       AcceptPmInviteContract.routingKey,
-      {
-        inviteId: dto.inviteId,
-        pmUserId: userId,
-      }
+      payload
     );
   }
 
@@ -136,21 +141,21 @@ export class ProjectsController {
     @Body() dto: RejectPmInviteContract.Request,
     @UserIdFromJwt() userId: number
   ) {
-    return this.projectsService.rejectPmInvite(
-      RejectPmInviteContract.exchange,
+    const payload: RejectPmInviteContract.Dto = {
+      inviteId: dto.inviteId,
+      pmUserId: userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<RejectPmInviteContract.Response>(
       RejectPmInviteContract.routingKey,
-      {
-        inviteId: dto.inviteId,
-        pmUserId: userId,
-      }
+      payload
     );
   }
 
   @UseGuards(AtJwtGuard)
   @Post('/invites/get-pm-invite-by-id')
   async getInviteById(@Body() dto: GetPmInviteByIdContract.Request) {
-    return this.projectsService.getPmInviteById(
-      GetPmInviteByIdContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<GetPmInviteByIdContract.Response>(
       GetPmInviteByIdContract.routingKey,
       dto
     );
@@ -159,8 +164,7 @@ export class ProjectsController {
   @UseGuards(AtJwtGuard)
   @Post('/get-project-pm-user')
   async getProjectPmUser(@Body() dto: GetProjectPmUserContract.Request) {
-    return this.projectsService.getProjectPmUser(
-      GetProjectPmUserContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<GetProjectPmUserContract.Response>(
       GetProjectPmUserContract.routingKey,
       dto
     );
@@ -171,8 +175,7 @@ export class ProjectsController {
   async getProjectDeveloperUsers(
     @Body() dto: GetProjectDeveloperUsersContract.Request
   ) {
-    return this.projectsService.getProjectDeveloperUsers(
-      GetProjectDeveloperUsersContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<GetProjectDeveloperUsersContract.Response>(
       GetProjectDeveloperUsersContract.routingKey,
       dto
     );
@@ -184,14 +187,15 @@ export class ProjectsController {
     @Body() dto: InviteDeveloperContract.Request,
     @UserIdFromJwt() userId: number
   ) {
-    return this.projectsService.inviteDeveloper(
-      InviteDeveloperContract.exchange,
+    const payload: InviteDeveloperContract.Dto = {
+      pmUserId: userId,
+      email: dto.email,
+      projectId: dto.projectId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<InviteDeveloperContract.Response>(
       InviteDeveloperContract.routingKey,
-      {
-        pmUserId: userId,
-        email: dto.email,
-        projectId: dto.projectId,
-      }
+      payload
     );
   }
 
@@ -201,13 +205,14 @@ export class ProjectsController {
     @Body() dto: AcceptDeveloperInviteContract.Request,
     @UserIdFromJwt() userId: number
   ) {
-    return this.projectsService.acceptDeveloperInvite(
-      AcceptDeveloperInviteContract.exchange,
+    const payload: AcceptDeveloperInviteContract.Dto = {
+      inviteId: dto.inviteId,
+      developerUserId: userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<AcceptDeveloperInviteContract.Response>(
       AcceptDeveloperInviteContract.routingKey,
-      {
-        inviteId: dto.inviteId,
-        developerUserId: userId,
-      }
+      payload
     );
   }
 
@@ -217,13 +222,14 @@ export class ProjectsController {
     @Body() dto: RejectDeveloperInviteContract.Request,
     @UserIdFromJwt() userId: number
   ) {
-    return this.projectsService.rejectDeveloperInvite(
-      RejectDeveloperInviteContract.exchange,
+    const payload: RejectDeveloperInviteContract.Dto = {
+      inviteId: dto.inviteId,
+      developerUserId: userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<RejectDeveloperInviteContract.Response>(
       RejectDeveloperInviteContract.routingKey,
-      {
-        inviteId: dto.inviteId,
-        developerUserId: userId,
-      }
+      payload
     );
   }
 
@@ -232,8 +238,7 @@ export class ProjectsController {
   async getDeveloperInviteById(
     @Body() dto: GetDeveloperInviteByIdContract.Request
   ) {
-    return this.projectsService.getDeveloperInviteById(
-      GetDeveloperInviteByIdContract.exchange,
+    return this.customAmqpConnection.requestOrThrow<GetDeveloperInviteByIdContract.Response>(
       GetDeveloperInviteByIdContract.routingKey,
       dto
     );

@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { CommentsService } from './comments.service';
-import { AtJwtGuard, UserIdFromJwt } from '@taskfusion-microservices/common';
+import {
+  AtJwtGuard,
+  CustomAmqpConnection,
+  UserIdFromJwt,
+} from '@taskfusion-microservices/common';
 import {
   CreateCommentContract,
   GetCommentsByTaskIdContract,
@@ -8,7 +11,7 @@ import {
 
 @Controller('comments')
 export class CommentsController {
-  constructor(private readonly commentsService: CommentsService) {}
+  constructor(private readonly customAmqpConnection: CustomAmqpConnection) {}
 
   @UseGuards(AtJwtGuard)
   @Post('create-comment')
@@ -16,14 +19,15 @@ export class CommentsController {
     @Body() dto: CreateCommentContract.Request,
     @UserIdFromJwt() userId: number
   ): Promise<CreateCommentContract.Response> {
-    return this.commentsService.createComment(
-      CreateCommentContract.exchange,
+    const payload: CreateCommentContract.Dto = {
+      taskId: dto.taskId,
+      text: dto.text,
+      userId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<CreateCommentContract.Response>(
       CreateCommentContract.routingKey,
-      {
-        taskId: dto.taskId,
-        text: dto.text,
-        userId,
-      }
+      payload
     );
   }
 
@@ -32,12 +36,13 @@ export class CommentsController {
   async getCommentsByTaskId(
     @Param('taskId') taskId: string
   ): Promise<GetCommentsByTaskIdContract.Response> {
-    return this.commentsService.getCommentsByTaskId(
-      GetCommentsByTaskIdContract.exchange,
+    const payload: GetCommentsByTaskIdContract.Dto = {
+      taskId: +taskId,
+    };
+
+    return this.customAmqpConnection.requestOrThrow<GetCommentsByTaskIdContract.Response>(
       GetCommentsByTaskIdContract.routingKey,
-      {
-        taskId: +taskId,
-      }
+      payload
     );
   }
 }
