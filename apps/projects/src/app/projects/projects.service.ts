@@ -1,4 +1,4 @@
-import { RabbitRPC } from '@golevelup/nestjs-rabbitmq';
+import { defaultNackErrorHandler, RabbitRPC } from '@golevelup/nestjs-rabbitmq';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -14,14 +14,13 @@ import {
   CheckProjectContract,
   GetProjectPmUserContract,
   GetProjectDeveloperUsersContract,
-  CheckClientContract,
-  CheckPmContract,
   GetProjectPmUserIdContract,
   GetUserProjectIdsContract,
   GetProjectDeveloperIdsContract,
   GetUserByIdContract,
   GetUsersByIdsContract,
   GetClientByUserIdContract,
+  CheckUserContract,
 } from '@taskfusion-microservices/contracts';
 import { ProjectEntity } from '@taskfusion-microservices/entities';
 import { Repository, In, DeepPartial } from 'typeorm';
@@ -40,17 +39,12 @@ export class ProjectsService extends BaseService {
     exchange: CreateProjectContract.exchange,
     routingKey: CreateProjectContract.routingKey,
     queue: CreateProjectContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async createProjectRpcHandler(
     dto: CreateProjectContract.Dto
   ): Promise<CreateProjectContract.Response> {
-    await this.throwErrorIfClientDoesNotExist(dto.clientId);
-
-    const isPmDefined = dto.pmId;
-
-    if (isPmDefined) {
-      await this.throwErrorIfPmDoesNotExist(dto.pmId);
-    }
+    await this.throwErrorIfUserDoesNotExist(dto.clientUserId);
 
     const project = await this.createProject(dto);
 
@@ -59,38 +53,20 @@ export class ProjectsService extends BaseService {
     return { id: project.id };
   }
 
-  private async throwErrorIfClientDoesNotExist(clientId: number) {
-    const dto: CheckClientContract.Dto = {
-      clientId,
+  private async throwErrorIfUserDoesNotExist(userId: number) {
+    const dto: CheckUserContract.Dto = {
+      userId,
     };
 
-    const clientResult =
-      await this.customAmqpConnection.requestOrThrow<CheckClientContract.Response>(
-        CheckClientContract.routingKey,
+    const userResult =
+      await this.customAmqpConnection.requestOrThrow<CheckUserContract.Response>(
+        CheckUserContract.routingKey,
         dto
       );
 
-    if (!clientResult || !clientResult.exists) {
-      throw new NotFoundException('Client not found!');
+    if (!userResult || !userResult.exists) {
+      throw new NotFoundException('User not found!');
     }
-  }
-
-  private async throwErrorIfPmDoesNotExist(pmId: number) {
-    const dto = {
-      pmId,
-    };
-
-    const pm =
-      await this.customAmqpConnection.requestOrThrow<CheckPmContract.Response>(
-        CheckPmContract.routingKey,
-        dto
-      );
-
-    if (!pm || !pm.exists) {
-      throw new NotFoundException('PM not found!');
-    }
-
-    return pm;
   }
 
   private async createProject(project: DeepPartial<ProjectEntity>) {
@@ -103,6 +79,7 @@ export class ProjectsService extends BaseService {
     exchange: GetClientProjectsContract.exchange,
     routingKey: GetClientProjectsContract.routingKey,
     queue: GetClientProjectsContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getClientProjectsRpcHandler(
     dto: GetClientProjectsContract.Dto
@@ -114,8 +91,8 @@ export class ProjectsService extends BaseService {
     return this.getClientProjectsWithPmAndDeveloperUsers(client.id);
   }
 
-  private async getClientProjectsWithPmAndDeveloperUsers(clientId: number) {
-    const projects = await this.getClientProjects(clientId);
+  private async getClientProjectsWithPmAndDeveloperUsers(clientUserId: number) {
+    const projects = await this.getClientProjects(clientUserId);
 
     // todo: fix n + 1 query
     const projectsWithUsers = projects.map(async (project) => {
@@ -179,8 +156,10 @@ export class ProjectsService extends BaseService {
     return pmUserId;
   }
 
-  private async getClientProjects(clientId: number) {
-    const projects = await this.projectRepository.find({ where: { clientId } });
+  private async getClientProjects(clientUserId: number) {
+    const projects = await this.projectRepository.find({
+      where: { clientUserId },
+    });
 
     return projects;
   }
@@ -227,6 +206,7 @@ export class ProjectsService extends BaseService {
     exchange: GetPmProjectsContract.exchange,
     routingKey: GetPmProjectsContract.routingKey,
     queue: GetPmProjectsContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getPmProjectsRpcHandler(
     dto: GetPmProjectsContract.Dto
@@ -323,6 +303,7 @@ export class ProjectsService extends BaseService {
     exchange: GetDeveloperProjectsContract.exchange,
     routingKey: GetDeveloperProjectsContract.routingKey,
     queue: GetDeveloperProjectsContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getDeveloperProjectsRpcHandler(
     dto: GetDeveloperProjectsContract.Dto
@@ -357,6 +338,7 @@ export class ProjectsService extends BaseService {
     exchange: GetProjectByIdContract.exchange,
     routingKey: GetProjectByIdContract.routingKey,
     queue: GetProjectByIdContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getProjectByIdRpcHandler(
     dto: GetProjectByIdContract.Dto
@@ -372,6 +354,7 @@ export class ProjectsService extends BaseService {
     exchange: CheckProjectContract.exchange,
     routingKey: CheckProjectContract.routingKey,
     queue: CheckProjectContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async checkProjectRpcHandler(
     dto: CheckProjectContract.Dto
@@ -395,6 +378,7 @@ export class ProjectsService extends BaseService {
     exchange: GetProjectPmUserContract.exchange,
     routingKey: GetProjectPmUserContract.routingKey,
     queue: GetProjectPmUserContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getProjectPmUserRpcHandler(
     dto: GetProjectPmUserContract.Dto
@@ -410,6 +394,7 @@ export class ProjectsService extends BaseService {
     exchange: GetProjectDeveloperUsersContract.exchange,
     routingKey: GetProjectDeveloperUsersContract.routingKey,
     queue: GetProjectDeveloperUsersContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getProjectDeveloperUsersRpcHandler(
     dto: GetProjectDeveloperUsersContract.Dto
