@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { InvitesService } from './services/invites.service';
+import { InvitesHelperService } from './services/invites-helper.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   PmInviteEntity,
@@ -7,12 +7,13 @@ import {
 } from '@taskfusion-microservices/entities';
 import { ProjectsModule } from '../projects/projects.module';
 import { PmInvitesService } from './services/pm-invites.service';
+import { DeveloperInvitesService } from './services/developer-invites.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([PmInviteEntity, DeveloperInviteEntity]),
     ProjectsModule,
   ],
-  providers: [InvitesService, PmInvitesService, DeveloperInviteEntity],
+  providers: [InvitesHelperService, PmInvitesService, DeveloperInvitesService],
 })
 export class InvitesModule {}

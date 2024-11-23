@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { BaseService } from '@taskfusion-microservices/common';
 
 @Injectable()
-export class PaymentsService {
-  getData(): { message: string } {
-    return { message: 'Hello API' };
+export class PaymentsService extends BaseService {
+  constructor() {
+    super(PaymentsService.name);
   }
 }
