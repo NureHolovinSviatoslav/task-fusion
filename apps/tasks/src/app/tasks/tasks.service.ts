@@ -1,8 +1,4 @@
-import {
-  RabbitRPC,
-  MessageHandlerErrorBehavior,
-  defaultNackErrorHandler,
-} from '@golevelup/nestjs-rabbitmq';
+import { RabbitRPC } from '@golevelup/nestjs-rabbitmq';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -12,7 +8,6 @@ import {
 import {
   CheckTaskContract,
   GetTasksByStatusContract,
-  GetTaskParticipantsContract,
   GetTaskByIdContract,
   ChangeTaskStatusContract,
   GetUsersByIdsContract,
@@ -25,11 +20,11 @@ import {
   AssignTaskToUserContract,
   UnassignTaskFromUserContract,
   DeleteTaskUserRelation,
-  FindTaskUserRelation,
+  GetTaskUserRelation,
   CreateTaskUserRelation,
 } from '@taskfusion-microservices/contracts';
 import { TaskEntity } from '@taskfusion-microservices/entities';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 
 @Injectable()
 export class TasksService extends BaseService {
@@ -45,10 +40,6 @@ export class TasksService extends BaseService {
     exchange: CheckTaskContract.exchange,
     routingKey: CheckTaskContract.routingKey,
     queue: CheckTaskContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'check-task',
   })
   async checkTask(
     dto: CheckTaskContract.Dto
@@ -72,10 +63,6 @@ export class TasksService extends BaseService {
     exchange: GetTasksByStatusContract.exchange,
     routingKey: GetTasksByStatusContract.routingKey,
     queue: GetTasksByStatusContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'get-tasks-by-status',
   })
   async getTasksByStatus(
     dto: GetTasksByStatusContract.Dto
@@ -92,19 +79,11 @@ export class TasksService extends BaseService {
     // todo: fix n + 1 query
 
     const tasks = result.map(async (task) => {
-      const getTaskParticipantsDto: GetTaskParticipantsContract.Dto = {
-        taskId: task.id,
-      };
-
-      const users =
-        await this.customAmqpConnection.requestOrThrow<GetTaskParticipantsContract.Response>(
-          GetTaskParticipantsContract.routingKey,
-          getTaskParticipantsDto
-        );
+      const taskParticipants = await this.getTaskParticipants(task.id);
 
       return {
         ...task,
-        users,
+        users: taskParticipants,
       };
     });
 
@@ -113,52 +92,98 @@ export class TasksService extends BaseService {
     return Promise.all(tasks);
   }
 
+  private async getTaskParticipants(taskId: number) {
+    const userIds = await this.getUserIdsByTaskId(taskId);
+
+    const users = await this.getUsersByIds(userIds);
+
+    return users;
+  }
+
+  private async getUserIdsByTaskId(taskId: number) {
+    const getUserIdsByTaskIdDto: GetUserIdsByTaskIdContract.Dto = {
+      taskId,
+    };
+
+    const { userIds } =
+      await this.customAmqpConnection.requestOrThrow<GetUserIdsByTaskIdContract.Response>(
+        GetUserIdsByTaskIdContract.routingKey,
+        getUserIdsByTaskIdDto
+      );
+
+    return userIds;
+  }
+
+  private async getUsersByIds(ids: number[]) {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const getUsersByIdsDto: GetUsersByIdsContract.Dto = {
+      ids,
+    };
+
+    const users =
+      await this.customAmqpConnection.requestOrThrow<GetUsersByIdsContract.Response>(
+        GetUsersByIdsContract.routingKey,
+        getUsersByIdsDto
+      );
+
+    return users;
+  }
+
   @RabbitRPC({
     exchange: GetTaskByIdContract.exchange,
     routingKey: GetTaskByIdContract.routingKey,
     queue: GetTaskByIdContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'get-task-by-id',
   })
-  async getTaskById(
+  async getTaskByIdRpcHandler(
     dto: GetTaskByIdContract.Dto
   ): Promise<GetTaskByIdContract.Response> {
-    const { taskId } = dto;
-
-    const task = await this.taskRepository.findOne({
-      where: {
-        id: taskId,
-      },
-    });
-
-    const getTaskParticipantsDto: GetTaskParticipantsContract.Dto = {
-      taskId,
-    };
-
-    const users =
-      await this.customAmqpConnection.requestOrThrow<GetTaskParticipantsContract.Response>(
-        GetTaskParticipantsContract.routingKey,
-        getTaskParticipantsDto
-      );
-
     this.logger.log('Retrieving task by id');
+
+    return this.getTaskWithUsersByIdOrThrow(dto.taskId);
+  }
+
+  private async getTaskWithUsersByIdOrThrow(taskId: number) {
+    const task = await this.getTaskByIdOrThrow(taskId);
+
+    const taskParticipants = await this.getTaskParticipants(taskId);
 
     return {
       ...task,
-      users,
+      users: taskParticipants,
     };
+  }
+
+  async getTaskByIdOrThrow(taskId: number) {
+    const task = await this.getTaskById(taskId);
+
+    if (!task) {
+      this.logAndThrowError(new NotFoundException('Task not found!'));
+    }
+
+    return task;
+  }
+
+  private async getTaskById(taskId: number) {
+    const task = await this.findTask({
+      id: taskId,
+    });
+
+    return task;
+  }
+
+  private async findTask(where: FindOptionsWhere<TaskEntity>) {
+    return this.taskRepository.findOne({
+      where,
+    });
   }
 
   @RabbitRPC({
     exchange: ChangeTaskStatusContract.exchange,
     routingKey: ChangeTaskStatusContract.routingKey,
     queue: ChangeTaskStatusContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'change-task-status',
   })
   async changeTaskStatus(
     dto: ChangeTaskStatusContract.Dto
@@ -212,10 +237,6 @@ export class TasksService extends BaseService {
     exchange: CreateTaskContract.exchange,
     routingKey: CreateTaskContract.routingKey,
     queue: CreateTaskContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'create-task',
   })
   async createTask(
     dto: CreateTaskContract.Dto
@@ -272,54 +293,9 @@ export class TasksService extends BaseService {
   }
 
   @RabbitRPC({
-    exchange: GetTaskParticipantsContract.exchange,
-    routingKey: GetTaskParticipantsContract.routingKey,
-    queue: GetTaskParticipantsContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'get-task-participants',
-  })
-  async getTaskParticipants(dto: GetTaskParticipantsContract.Dto) {
-    const { taskId } = dto;
-
-    const getUserIdsByTaskIdDto: GetUserIdsByTaskIdContract.Dto = {
-      taskId,
-    };
-
-    const { userIds } =
-      await this.customAmqpConnection.requestOrThrow<GetUserIdsByTaskIdContract.Response>(
-        GetUserIdsByTaskIdContract.routingKey,
-        getUserIdsByTaskIdDto
-      );
-
-    if (userIds.length === 0) {
-      return [];
-    }
-
-    const getUsersByIdsDto: GetUsersByIdsContract.Dto = {
-      ids: userIds,
-    };
-
-    const users =
-      await this.customAmqpConnection.requestOrThrow<GetUsersByIdsContract.Response>(
-        GetUsersByIdsContract.routingKey,
-        getUsersByIdsDto
-      );
-
-    this.logger.log(`Retrieving task participants: ${taskId}`);
-
-    return users;
-  }
-
-  @RabbitRPC({
     exchange: GetUserTasksByStatusContract.exchange,
     routingKey: GetUserTasksByStatusContract.routingKey,
     queue: GetUserTasksByStatusContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'get-user-tasks-by-status',
   })
   async getUserTasksByStatus(
     dto: GetUserTasksByStatusContract.Dto
@@ -350,19 +326,11 @@ export class TasksService extends BaseService {
     // todo: fix n + 1 query
 
     const tasksWithParticipants = tasks.map(async (task) => {
-      const getTaskParticipantsDto: GetTaskParticipantsContract.Dto = {
-        taskId: task.id,
-      };
-
-      const users =
-        await this.customAmqpConnection.requestOrThrow<GetTaskParticipantsContract.Response>(
-          GetTaskParticipantsContract.routingKey,
-          getTaskParticipantsDto
-        );
+      const taskParticipants = await this.getTaskParticipants(task.id);
 
       return {
         ...task,
-        users,
+        users: taskParticipants,
       };
     });
 
@@ -375,10 +343,6 @@ export class TasksService extends BaseService {
     exchange: AssignTaskToUserContract.exchange,
     routingKey: AssignTaskToUserContract.routingKey,
     queue: AssignTaskToUserContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'assign-task-to-user',
   })
   async assingTaskToUser(
     dto: AssignTaskToUserContract.Dto
@@ -395,14 +359,14 @@ export class TasksService extends BaseService {
       this.logAndThrowError(new NotFoundException('Task not found!'));
     }
 
-    const findTaskUserRelation: FindTaskUserRelation.Dto = {
+    const findTaskUserRelation: GetTaskUserRelation.Dto = {
       taskId,
       userId,
     };
 
     const existingTaskUserRelation =
-      await this.customAmqpConnection.requestOrThrow<FindTaskUserRelation.Response>(
-        FindTaskUserRelation.routingKey,
+      await this.customAmqpConnection.requestOrThrow<GetTaskUserRelation.Response>(
+        GetTaskUserRelation.routingKey,
         findTaskUserRelation
       );
 
@@ -455,10 +419,6 @@ export class TasksService extends BaseService {
     exchange: UnassignTaskFromUserContract.exchange,
     routingKey: UnassignTaskFromUserContract.routingKey,
     queue: UnassignTaskFromUserContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'unassign-task-from-user',
   })
   async unassingTaskFromUser(
     dto: UnassignTaskFromUserContract.Dto

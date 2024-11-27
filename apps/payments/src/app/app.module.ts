@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { PaymentEntity } from '@taskfusion-microservices/entities';
+import { PaymentRequestEntity } from '@taskfusion-microservices/entities';
 import { getTypeOrmConfig } from '@taskfusion-microservices/helpers';
 import { PaymentsModule } from './payments/payments.module';
+import { RmqDynamicModule } from '@taskfusion-microservices/modules';
 
 @Module({
   imports: [
@@ -16,9 +17,10 @@ import { PaymentsModule } from './payments/payments.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
-        getTypeOrmConfig(configService, [PaymentEntity]),
+        getTypeOrmConfig(configService, [PaymentRequestEntity]),
     }),
-    TypeOrmModule.forFeature([PaymentEntity]),
+    RmqDynamicModule.register(),
+    TypeOrmModule.forFeature([PaymentRequestEntity]),
     PaymentsModule,
   ],
 })

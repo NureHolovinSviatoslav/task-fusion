@@ -1,8 +1,4 @@
-import {
-  RabbitRPC,
-  MessageHandlerErrorBehavior,
-  defaultNackErrorHandler,
-} from '@golevelup/nestjs-rabbitmq';
+import { RabbitRPC } from '@golevelup/nestjs-rabbitmq';
 import {
   BadRequestException,
   Injectable,
@@ -14,7 +10,7 @@ import {
   InviteDeveloperContract,
   AcceptDeveloperInviteContract,
   RejectDeveloperInviteContract,
-  GetProjectPmIdContract,
+  GetProjectPmUserIdContract,
 } from '@taskfusion-microservices/contracts';
 import {
   UserType,
@@ -26,7 +22,10 @@ import {
 } from '@taskfusion-microservices/entities';
 import { DeepPartial, FindOptionsWhere, Repository } from 'typeorm';
 import { InvitesHelperService } from './invites-helper.service';
-import { BaseService, CustomAmqpConnection } from '@taskfusion-microservices/common';
+import {
+  BaseService,
+  CustomAmqpConnection,
+} from '@taskfusion-microservices/common';
 
 @Injectable()
 export class DeveloperInvitesService extends BaseService {
@@ -43,10 +42,6 @@ export class DeveloperInvitesService extends BaseService {
     exchange: GetDeveloperInviteByIdContract.exchange,
     routingKey: GetDeveloperInviteByIdContract.routingKey,
     queue: GetDeveloperInviteByIdContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'get-developer-invite-by-id',
   })
   async getDeveloperInviteByIdRpcHandler(
     dto: GetDeveloperInviteByIdContract.Dto
@@ -69,10 +64,6 @@ export class DeveloperInvitesService extends BaseService {
     exchange: InviteDeveloperContract.exchange,
     routingKey: InviteDeveloperContract.routingKey,
     queue: InviteDeveloperContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'invite-developer',
   })
   async inviteDeveloperRpcHandler(
     dto: InviteDeveloperContract.Dto
@@ -143,14 +134,14 @@ export class DeveloperInvitesService extends BaseService {
     return { id: invite.id };
   }
 
-  async getProjectPmId(projectId: number) {
-    const payload: GetProjectPmIdContract.Dto = {
+  private async getProjectPmId(projectId: number) {
+    const payload: GetProjectPmUserIdContract.Dto = {
       projectId,
     };
 
     const result =
-      await this.customAmqpConnection.requestOrThrow<GetProjectPmIdContract.Response>(
-        GetProjectPmIdContract.routingKey,
+      await this.customAmqpConnection.requestOrThrow<GetProjectPmUserIdContract.Response>(
+        GetProjectPmUserIdContract.routingKey,
         payload
       );
 
@@ -159,27 +150,23 @@ export class DeveloperInvitesService extends BaseService {
     return projectPmUserId;
   }
 
-  async findDeveloperInvite(where: FindOptionsWhere<DeveloperInviteEntity>) {
+  private async findDeveloperInvite(where: FindOptionsWhere<DeveloperInviteEntity>) {
     return this.developerInviteEntityRepositoty.findOne({
       where,
     });
   }
 
-  async handleExistingDeveloperInvite(
+  private async handleExistingDeveloperInvite(
     existingInvite: DeveloperInviteEntity,
     developerUser: UserEntity,
     pmUser: UserEntity
   ) {
     switch (existingInvite.inviteStatus) {
       case InviteStatus.ACCEPTED:
-        return this.logAndThrowError(
-          'Invite already accepted'
-        );
+        return this.logAndThrowError('Invite already accepted');
 
       case InviteStatus.REJECTED:
-        return this.logAndThrowError(
-          'Invite already rejected'
-        );
+        return this.logAndThrowError('Invite already rejected');
 
       case InviteStatus.PENDING:
         return this.handlePendingExistingDeveloperInvite(
@@ -189,9 +176,7 @@ export class DeveloperInvitesService extends BaseService {
         );
 
       default:
-        return this.logAndThrowError(
-          'Unhandled invite status'
-        );
+        return this.logAndThrowError('Unhandled invite status');
     }
   }
 
@@ -204,9 +189,7 @@ export class DeveloperInvitesService extends BaseService {
       this.isDeveloperInviteActive(existingInvite);
 
     if (isDeveloperInviteActive) {
-      this.logAndThrowError(
-        'Active invite already exists'
-      );
+      this.logAndThrowError('Active invite already exists');
     }
 
     await this.updateDeveloperInvite(
@@ -226,7 +209,7 @@ export class DeveloperInvitesService extends BaseService {
     return { id: existingInvite.id };
   }
 
-  async updateDeveloperInvite(
+  private async updateDeveloperInvite(
     existingInvite: DeveloperInviteEntity,
     updatedFields: DeepPartial<DeveloperInviteEntity>
   ) {
@@ -238,7 +221,7 @@ export class DeveloperInvitesService extends BaseService {
     );
   }
 
-  async throwIfDeveloperInviteIsNotActive(invite: DeveloperInviteEntity) {
+  private async throwIfDeveloperInviteIsNotActive(invite: DeveloperInviteEntity) {
     if (!this.isDeveloperInviteActive(invite)) {
       this.logAndThrowError(
         new BadRequestException('Invite is not valid anymore')
@@ -246,7 +229,7 @@ export class DeveloperInvitesService extends BaseService {
     }
   }
 
-  isDeveloperInviteActive(invite: DeveloperInviteEntity) {
+  private isDeveloperInviteActive(invite: DeveloperInviteEntity) {
     return (
       new Date(invite.expiresAt) > new Date() &&
       invite.developerUserId === invite.developerUserId &&
@@ -254,7 +237,7 @@ export class DeveloperInvitesService extends BaseService {
     );
   }
 
-  async createDeveloperInvite(
+  private async createDeveloperInvite(
     pmUserId: number,
     developerUserId: number,
     project: ProjectEntity
@@ -274,10 +257,6 @@ export class DeveloperInvitesService extends BaseService {
     exchange: AcceptDeveloperInviteContract.exchange,
     routingKey: AcceptDeveloperInviteContract.routingKey,
     queue: AcceptDeveloperInviteContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'accept-developer-invite',
   })
   async acceptDeveloperInviteRpcHandler(
     dto: AcceptDeveloperInviteContract.Dto
@@ -320,10 +299,6 @@ export class DeveloperInvitesService extends BaseService {
     exchange: RejectDeveloperInviteContract.exchange,
     routingKey: RejectDeveloperInviteContract.routingKey,
     queue: RejectDeveloperInviteContract.queue,
-    errorBehavior: MessageHandlerErrorBehavior.NACK,
-    errorHandler: defaultNackErrorHandler,
-    allowNonJsonMessages: true,
-    name: 'reject-developer-invite',
   })
   async rejectDeveloperInviteRpcHandler(
     dto: RejectDeveloperInviteContract.Dto
