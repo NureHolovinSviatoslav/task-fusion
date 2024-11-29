@@ -56,3 +56,5 @@ devops
 
 docker-compose*
 *.pem
+
+randomize.sh
