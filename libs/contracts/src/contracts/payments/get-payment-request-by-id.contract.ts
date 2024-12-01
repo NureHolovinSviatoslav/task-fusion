@@ -3,23 +3,25 @@ import {
   GENERAL_EXCHANGE_NAME,
   PAYMENTS_QUEUE_NAME,
 } from '@taskfusion-microservices/constants';
-import { IsInt } from 'class-validator';
+import {
+  PaymentRequestEntity,
+  ProjectEntity,
+} from '@taskfusion-microservices/entities';
 
-export namespace AcceptPaymentRequestContract {
+export namespace GetPaymentRequestByIdContract {
   export const exchange = GENERAL_EXCHANGE_NAME;
 
-  export const routingKey = `accept-payment-request`;
+  export const routingKey = `get-payment-request-by-id`;
 
   export const queue = `${PAYMENTS_QUEUE_NAME}.${routingKey}`;
 
   export type Response = Errorable<{
-    success: boolean;
+    paymentRequest: PaymentRequestEntity & { project: ProjectEntity };
   }>;
 
-  export class Request {
-    @IsInt()
+  export class Request {}
+
+  export class Dto extends Request {
     paymentRequestId: number;
   }
-
-  export class Dto extends Request {}
 }

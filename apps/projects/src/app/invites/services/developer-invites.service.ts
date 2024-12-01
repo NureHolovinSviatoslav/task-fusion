@@ -1,4 +1,4 @@
-import { RabbitRPC } from '@golevelup/nestjs-rabbitmq';
+import { defaultNackErrorHandler, RabbitRPC } from '@golevelup/nestjs-rabbitmq';
 import {
   BadRequestException,
   Injectable,
@@ -11,6 +11,7 @@ import {
   AcceptDeveloperInviteContract,
   RejectDeveloperInviteContract,
   GetProjectPmUserIdContract,
+  CreateNotificationContract,
 } from '@taskfusion-microservices/contracts';
 import {
   UserType,
@@ -42,6 +43,7 @@ export class DeveloperInvitesService extends BaseService {
     exchange: GetDeveloperInviteByIdContract.exchange,
     routingKey: GetDeveloperInviteByIdContract.routingKey,
     queue: GetDeveloperInviteByIdContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async getDeveloperInviteByIdRpcHandler(
     dto: GetDeveloperInviteByIdContract.Dto
@@ -64,6 +66,7 @@ export class DeveloperInvitesService extends BaseService {
     exchange: InviteDeveloperContract.exchange,
     routingKey: InviteDeveloperContract.routingKey,
     queue: InviteDeveloperContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async inviteDeveloperRpcHandler(
     dto: InviteDeveloperContract.Dto
@@ -131,6 +134,12 @@ export class DeveloperInvitesService extends BaseService {
       invitedUserType: UserType.DEVELOPER,
     });
 
+    await this.sendInAppNotification(
+      'Project Invitation',
+      `/developer/project-invitation/${invite.id}`,
+      developerUser.id
+    );
+
     return { id: invite.id };
   }
 
@@ -150,7 +159,9 @@ export class DeveloperInvitesService extends BaseService {
     return projectPmUserId;
   }
 
-  private async findDeveloperInvite(where: FindOptionsWhere<DeveloperInviteEntity>) {
+  private async findDeveloperInvite(
+    where: FindOptionsWhere<DeveloperInviteEntity>
+  ) {
     return this.developerInviteEntityRepositoty.findOne({
       where,
     });
@@ -206,6 +217,12 @@ export class DeveloperInvitesService extends BaseService {
       invitedUserType: UserType.DEVELOPER,
     });
 
+    await this.sendInAppNotification(
+      'Project Invitation was updated',
+      `/developer/project-invitation/${existingInvite.id}`,
+      developerUser.id
+    );
+
     return { id: existingInvite.id };
   }
 
@@ -221,7 +238,9 @@ export class DeveloperInvitesService extends BaseService {
     );
   }
 
-  private async throwIfDeveloperInviteIsNotActive(invite: DeveloperInviteEntity) {
+  private async throwIfDeveloperInviteIsNotActive(
+    invite: DeveloperInviteEntity
+  ) {
     if (!this.isDeveloperInviteActive(invite)) {
       this.logAndThrowError(
         new BadRequestException('Invite is not valid anymore')
@@ -253,10 +272,26 @@ export class DeveloperInvitesService extends BaseService {
     });
   }
 
+  private async sendInAppNotification(
+    title: string,
+    redirectUrl: string,
+    userId: number
+  ) {
+    await this.customAmqpConnection.publishOrThrow(
+      CreateNotificationContract.routingKey,
+      {
+        title,
+        redirectUrl,
+        userId,
+      }
+    );
+  }
+
   @RabbitRPC({
     exchange: AcceptDeveloperInviteContract.exchange,
     routingKey: AcceptDeveloperInviteContract.routingKey,
     queue: AcceptDeveloperInviteContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async acceptDeveloperInviteRpcHandler(
     dto: AcceptDeveloperInviteContract.Dto
@@ -277,6 +312,12 @@ export class DeveloperInvitesService extends BaseService {
     await this.updateDeveloperInvite(invite, {
       inviteStatus: InviteStatus.ACCEPTED,
     });
+
+    await this.sendInAppNotification(
+      'Project Invitation was accepted',
+      `/developer/project-invitation/${inviteId}`,
+      invite.pmUserId
+    );
 
     return this.invitesHelperService.assignUserToProject(
       invite.projectId,
@@ -299,6 +340,7 @@ export class DeveloperInvitesService extends BaseService {
     exchange: RejectDeveloperInviteContract.exchange,
     routingKey: RejectDeveloperInviteContract.routingKey,
     queue: RejectDeveloperInviteContract.queue,
+    errorHandler: defaultNackErrorHandler,
   })
   async rejectDeveloperInviteRpcHandler(
     dto: RejectDeveloperInviteContract.Dto
@@ -319,6 +361,12 @@ export class DeveloperInvitesService extends BaseService {
     await this.updateDeveloperInvite(invite, {
       inviteStatus: InviteStatus.REJECTED,
     });
+
+    await this.sendInAppNotification(
+      'Project Invitation was rejected',
+      `/developer/project-invitation/${inviteId}`,
+      invite.pmUserId
+    );
 
     return {
       success: true,
