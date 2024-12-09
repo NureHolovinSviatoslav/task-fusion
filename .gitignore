@@ -49,3 +49,10 @@ Thumbs.db
 
 # Notes
 notes.tsx
+
+kubeconfig
+
+devops
+
+docker-compose*
+*.pem

@@ -23,6 +23,9 @@ import {
   GetTaskUserRelation,
   CreateTaskUserRelation,
   CreateNotificationContract,
+  ValidateAccessToTaskContract,
+  ValidateAccessToProjectContract,
+  ChangeTaskPriorityContract,
 } from '@taskfusion-microservices/contracts';
 import { TaskEntity } from '@taskfusion-microservices/entities';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
@@ -238,6 +241,60 @@ export class TasksService extends BaseService {
   }
 
   @RabbitRPC({
+    exchange: ChangeTaskPriorityContract.exchange,
+    routingKey: ChangeTaskPriorityContract.routingKey,
+    queue: ChangeTaskPriorityContract.queue,
+    errorHandler: defaultNackErrorHandler,
+  })
+  async changeTaskPriority(
+    dto: ChangeTaskPriorityContract.Dto
+  ): Promise<ChangeTaskPriorityContract.Response> {
+    const { taskId, taskPriority, userId } = dto;
+
+    const taskBeforeUpdate = await this.taskRepository.findOne({
+      where: {
+        id: taskId,
+      },
+    });
+
+    const result = await this.taskRepository.update(
+      {
+        id: taskId,
+      },
+      {
+        taskPriority,
+      }
+    );
+
+    const getUsersByIdDto: GetUsersByIdsContract.Dto = {
+      ids: [userId],
+    };
+
+    const users =
+      await this.customAmqpConnection.requestOrThrow<GetUsersByIdsContract.Response>(
+        GetUsersByIdsContract.routingKey,
+        getUsersByIdDto
+      );
+
+    const createActionDto: CreateActionContract.Dto = {
+      title: `Task priority changed from "${taskBeforeUpdate.taskPriority}" to "${taskPriority}" by ${users[0].name}`,
+      userId,
+      taskId,
+    };
+
+    await this.customAmqpConnection.requestOrThrow(
+      CreateActionContract.routingKey,
+      createActionDto
+    );
+
+    this.logger.log(`Task priority changed: ${taskId}`);
+
+    return {
+      success: Boolean(result.affected && result.affected > 0),
+    };
+  }
+
+  @RabbitRPC({
     exchange: CreateTaskContract.exchange,
     routingKey: CreateTaskContract.routingKey,
     queue: CreateTaskContract.queue,
@@ -354,7 +411,7 @@ export class TasksService extends BaseService {
   async assingTaskToUser(
     dto: AssignTaskToUserContract.Dto
   ): Promise<AssignTaskToUserContract.Response> {
-    const { userId, taskId } = dto;
+    const { userId, assignerId, taskId } = dto;
 
     const task = await this.taskRepository.findOne({
       where: {
@@ -417,7 +474,13 @@ export class TasksService extends BaseService {
 
     this.logger.log(`Task ${taskId} assigned to user ${users[0].name}`);
 
-    // notification: if assigner is not the same as assigned user, notify
+    if (assignerId !== userId) {
+      await this.sendInAppNotification(
+        `Task ${task.title} was assigned from you`,
+        `/projects/${task.projectId}/task/${task.id}`,
+        userId
+      );
+    }
 
     return {
       success: Boolean(taskUserRelation),
@@ -448,7 +511,13 @@ export class TasksService extends BaseService {
   async unassingTaskFromUser(
     dto: UnassignTaskFromUserContract.Dto
   ): Promise<UnassignTaskFromUserContract.Response> {
-    const { userId, taskId } = dto;
+    const { userId, unassignerId, taskId } = dto;
+
+    const task = await this.taskRepository.findOne({
+      where: {
+        id: taskId,
+      },
+    });
 
     const deleteTaskUserRelation: DeleteTaskUserRelation.Dto = {
       taskId,
@@ -484,10 +553,43 @@ export class TasksService extends BaseService {
 
     this.logger.log(`Task ${taskId} unassigned from user ${users[0].name}`);
 
-    // notification: if assigner is not the same as assigned user, notify
+    if (userId !== unassignerId) {
+      await this.sendInAppNotification(
+        `Task ${task.title} was unassigned from you`,
+        `/projects/${task.projectId}/task/${task.id}`,
+        userId
+      );
+    }
 
     return {
       success: deleteOperationSuccess,
     };
+  }
+
+  @RabbitRPC({
+    exchange: ValidateAccessToTaskContract.exchange,
+    routingKey: ValidateAccessToTaskContract.routingKey,
+    queue: ValidateAccessToTaskContract.queue,
+    errorHandler: defaultNackErrorHandler,
+  })
+  async validateAccessToTask(
+    dto: ValidateAccessToTaskContract.Dto
+  ): Promise<ValidateAccessToTaskContract.Response> {
+    const task = await this.getTaskByIdOrThrow(dto.taskId);
+
+    // we use project validation as only project participants like client, devs and pm have access to a task
+
+    const payload: ValidateAccessToProjectContract.Dto = {
+      projectId: task.projectId,
+      userId: dto.userId,
+    };
+
+    const result =
+      await this.customAmqpConnection.requestOrThrow<ValidateAccessToProjectContract.Response>(
+        ValidateAccessToProjectContract.routingKey,
+        payload
+      );
+
+    return result;
   }
 }
