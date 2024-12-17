@@ -24,6 +24,7 @@ import {
   GetProjectPmUserIdContract,
   GetUserByIdContract,
   RejectPaymentRequestContract,
+  SendEmailContract,
 } from '@taskfusion-microservices/contracts';
 import {
   PaymentRequestEntity,
@@ -477,5 +478,46 @@ export class PaymentsService extends BaseService {
     const checkoutSessionId = evt.data.object.id;
 
     await this.acceptPaymentRequestByCheckoutSessionId(checkoutSessionId);
+
+    // Send receipt email
+    await this.sendReceiptEmail(checkoutSessionId);
+  }
+
+  private async sendReceiptEmail(checkoutSessionId: string) {
+    const paymentRequest = await this.findPaymentByCheckoutSessionId(checkoutSessionId);
+
+    if (!paymentRequest) {
+      this.logger.error(`Payment request not found for session ID: ${checkoutSessionId}`);
+      return;
+    }
+
+    const user = await this.getUserByIdOrThrow(paymentRequest.clientUserId);
+
+    const emailPayload: SendEmailContract.Dto = {
+      recipientEmail: user.email,
+      subject: 'Payment Receipt from TaskFusion',
+      message: this.formReceiptMessageHTML(paymentRequest),
+    };
+
+    await this.customAmqpConnection.publishOrThrow(
+      SendEmailContract.routingKey,
+      emailPayload
+    );
+
+    this.logger.log(`Receipt email sent to ${user.email} for payment request ID: ${paymentRequest.id}`);
+  }
+
+  private formReceiptMessageHTML(paymentRequest: PaymentRequestEntity): string {
+    return `
+      <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+        <h2 style="color: #4CAF50; text-align: center;">Payment Receipt</h2>
+        <p>Hi,</p>
+        <p>Thank you for your payment for the project <strong>${paymentRequest.projectId}</strong>.</p>
+        <p>Amount: <strong>$${paymentRequest.usdAmount}</strong></p>
+        <p>Payment ID: <strong>${paymentRequest.id}</strong></p>
+        <p>If you have any questions, please contact us.</p>
+        <p>Thank you!</p>
+      </div>
+    `;
   }
 }
