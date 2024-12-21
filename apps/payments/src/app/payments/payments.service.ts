@@ -479,7 +479,6 @@ export class PaymentsService extends BaseService {
 
     await this.acceptPaymentRequestByCheckoutSessionId(checkoutSessionId);
 
-    // Send receipt email
     await this.sendReceiptEmail(checkoutSessionId);
   }
 
